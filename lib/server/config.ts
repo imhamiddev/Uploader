@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import path from "node:path"
 
 /** 5 MB per request: safe for proxy / timeout limits on shared hosting. */
@@ -37,7 +38,12 @@ export function getConfig(): ServerConfig {
   cached = {
     adminUser,
     adminPass,
-    secret: process.env.SESSION_SECRET || "",
+    secret:
+      process.env.SESSION_SECRET ||
+      crypto
+        .createHash("sha256")
+        .update("uploader:" + adminUser + ":" + adminPass)
+        .digest("hex"),
     quota: (parseFloat(process.env.QUOTA_GB ?? "") || 4.5) * 1024 ** 3,
     dataDir,
     filesDir: path.join(dataDir, "files"),

@@ -30,3 +30,6 @@ export async function readJson<T = Record<string, unknown>>(
     return {} as T
   }
 }
+
+/** Route handler context for dynamic segments (params is a Promise in Next 16). */
+export type RouteCtx<K extends string> = { params: Promise<Record<K, string>> }

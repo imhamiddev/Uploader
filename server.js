@@ -184,8 +184,16 @@ app.use((req, res, next) => {
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'no-referrer',
-    'X-Robots-Tag': 'noindex, nofollow'
+    'X-Robots-Tag': 'noindex, nofollow',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    // Pages use small inline <script>/<style> blocks, everything else is same-origin only.
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+      + "img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; "
+      + "form-action 'self'; frame-ancestors 'none'"
   });
+  if (req.secure) res.set('Strict-Transport-Security', 'max-age=31536000');
   next();
 });
 

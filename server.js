@@ -26,6 +26,10 @@ if (!ADMIN_USER || !ADMIN_PASS) {
 }
 const SECRET = process.env.SESSION_SECRET ||
   crypto.createHash('sha256').update('uploader:' + ADMIN_USER + ':' + ADMIN_PASS).digest('hex');
+if (!process.env.SESSION_SECRET) {
+  console.warn('[warn] SESSION_SECRET is not set; sessions are signed with a key derived from the admin credentials. Set a long random SESSION_SECRET.');
+}
+if (String(ADMIN_PASS).length < 8) console.warn('[warn] ADMIN_PASS is shorter than 8 characters. Use a stronger password.');
 const QUOTA = (parseFloat(process.env.QUOTA_GB) || 4.5) * 1024 ** 3;
 const CHUNK = 5 * 1024 * 1024; // 5 MB per request: safe for proxy / timeout limits
 

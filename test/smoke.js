@@ -106,6 +106,30 @@ async function upload(size, opts) {
   assert.strictEqual(left.files.length, 0);
   assert.deepStrictEqual(fs.readdirSync(path.join(DATA, 'files')), [], 'no files left on disk');
 
+  // ---- multi-file bundle (one link, one zip) ----
+  async function rawUpload(name, bytes) {
+    const init = await (await req('/api/upload/init', { method: 'POST', json: { name, size: bytes.length } })).json();
+    assert.strictEqual((await req(`/api/upload/${init.id}/0`, { method: 'PUT', body: bytes })).status, 200);
+    return init.id;
+  }
+  const bid = [await rawUpload('same.txt', Buffer.from('one')), await rawUpload('same.txt', Buffer.from('two')), await rawUpload('b.bin', Buffer.alloc(300, 1))];
+  assert.strictEqual((await req('/api/bundle/finish', { method: 'POST', json: { ids: [] } })).status, 400, 'empty bundle rejected');
+  assert.strictEqual((await req('/api/bundle/finish', { method: 'POST', json: { ids: [bid[0], 'nope'] } })).status, 404, 'unknown upload rejected');
+  const bf = await (await req('/api/bundle/finish', { method: 'POST', json: { ids: bid, rename: true, name: 'pack', password: 'bpw' } })).json();
+  let brec;
+  for (let i = 0; i < 100 && !(brec && brec.status !== 'processing'); i++) { await sleep(100); brec = (await (await req('/api/files')).json()).files.find(x => x.id === bf.id); }
+  assert.strictEqual(brec.status, 'ready'); assert.strictEqual(brec.name, 'pack.zip'); assert.strictEqual(brec.bundle, 3);
+  assert.strictEqual((await req('/api/bundle/finish', { method: 'POST', json: { ids: bid } })).status, 404, 'uploads are consumed by the bundle');
+  const zipPath = path.join(DATA, 'files', bf.id + '.zip');
+  const zbuf = fs.readFileSync(zipPath).toString('latin1');
+  for (const n of ['same.txt', 'same (2).txt', 'b.bin']) assert.ok(zbuf.includes(n), 'zip contains ' + n);
+  assert.deepStrictEqual(fs.readdirSync(path.join(DATA, 'tmp')), [], 'temp parts removed after zipping');
+  assert.strictEqual((await req(`/api/files/${bf.id}`, { method: 'DELETE' })).status, 200);
+
+  // ---- QR library is served locally ----
+  const qrjs = await fetch(BASE + '/vendor/qrcode.js');
+  assert.strictEqual(qrjs.status, 200); assert.ok((await qrjs.text()).includes('qrcode'));
+
   // ---- encrypted texts ----
   const form = { 'content-type': 'application/x-www-form-urlencoded' };
   const secretText = 'سلام <b>x</b> & secret-marker-12345';

@@ -975,20 +975,30 @@ $('#txSend').onclick = async () => {
   const v = document.querySelector('input[name=txexp]:checked').value;
   const pw = $('#txPw').value;
   const btn = $('#txSend');
+  const e2e = $('#txE2e').checked;
+  if (e2e && !needE2E()) return;
   btn.disabled = true;
   try {
-    const d = await api('/api/texts', { method: 'POST', json: {
-      text, title: $('#txTitle').value, password: pw, burn: $('#txBurn').checked,
-      expiresAt: v === '0' ? null : Date.now() + Number(v) * 1000
-    } });
-    const full = location.origin + d.link;
+    const common = { title: $('#txTitle').value, burn: $('#txBurn').checked, expiresAt: v === '0' ? null : Date.now() + Number(v) * 1000 };
+    let body, keyRaw = null;
+    if (e2e) { // encrypt here; the server only ever receives ciphertext
+      const pk = pw ? await E2E.keyFromPassword(pw) : null;
+      const k = pk || await E2E.newKey();
+      if (!pk) keyRaw = k.raw;
+      body = { ...common, e2e: true, chars: [...text].length,
+        payload: E2E.b64uEnc(await E2E.sealText(k.key, text)), meta: await E2E.sealMeta(k.key, { v: 1 }),
+        salt: pk ? pk.salt : undefined, vfy: pk ? pk.vfy : undefined };
+    } else body = { ...common, text, password: pw };
+    const d = await api('/api/texts', { method: 'POST', json: body });
+    if (e2e) e2eSave('t', d.id, { k: keyRaw });
+    const full = location.origin + d.link + (keyRaw ? '#k=' + keyRaw : '');
     const cb = el('button', { class: 'btn sm', type: 'button' }, ic('copy'), el('span', {}, 'کپی'));
     cb.onclick = async () => { if (await copy(full)) cb.replaceChildren(ic('check'), el('span', {}, 'کپی شد')); };
     $('#txResult').replaceChildren(el('div', { class: 'q done' },
       el('div', { class: 'q-top' }, el('span', { class: 'q-name' }, 'لینک امن ساخته شد'), el('span', { class: 'q-st ok' }, ic('check'))),
       el('div', { class: 'link' },
         el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک متن', onclick: e => e.target.select() }), cb, qrBtn(full, 'text')),
-      el('div', { class: 'hint', style: 'margin-top:8px' }, pw ? 'رمز را از راهی جدا از لینک ارسال کنید.' : 'این متن رمز ندارد؛ هرکس لینک را داشته باشد می‌تواند آن را ببیند.')));
+      el('div', { class: 'hint', style: 'margin-top:8px' }, pw ? 'رمز را از راهی جدا از لینک ارسال کنید.' : (e2e ? 'کلید رمزگشایی داخل لینک (بعد از #) است؛ لینک را کامل بفرستید.' : 'این متن رمز ندارد؛ هرکس لینک را داشته باشد می‌تواند آن را ببیند.'))));
     txBody.value = ''; $('#txTitle').value = ''; $('#txPw').value = ''; $('#txPw').type = 'password'; $('#txCount').textContent = '';
     toast('متن رمزگذاری و ذخیره شد.', 'ok');
     refreshTexts();

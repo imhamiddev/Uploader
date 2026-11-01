@@ -6,6 +6,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
+const { promisify } = require('util');
 const express = require('express');
 const archiver = require('archiver');
 archiver.registerFormat('zip-encrypted', require('archiver-zip-encrypted'));
@@ -87,14 +88,19 @@ function cookiesOf(req) {
   });
   return o;
 }
-function hashPw(pw) {
+// scrypt runs on the libuv thread pool so hashing never blocks the event loop.
+const scrypt = promisify(crypto.scrypt);
+const pwBytes = pw => String(pw).slice(0, 1024); // cap input length (DoS guard)
+async function hashPw(pw) {
   const salt = crypto.randomBytes(16);
-  return salt.toString('hex') + ':' + crypto.scryptSync(pw, salt, 32).toString('hex');
+  return salt.toString('hex') + ':' + (await scrypt(pwBytes(pw), salt, 32)).toString('hex');
 }
-function checkPw(pw, stored) {
-  const [s, h] = stored.split(':');
-  const x = crypto.scryptSync(String(pw), Buffer.from(s, 'hex'), 32);
-  return crypto.timingSafeEqual(x, Buffer.from(h, 'hex'));
+async function checkPw(pw, stored) {
+  const [s, h] = String(stored || '').split(':');
+  if (!s || !h) return false;
+  const expected = Buffer.from(h, 'hex');
+  const x = await scrypt(pwBytes(pw), Buffer.from(s, 'hex'), expected.length || 32);
+  return x.length === expected.length && crypto.timingSafeEqual(x, expected);
 }
 function cleanName(n, fallback) {
   n = String(n || '').replace(/[\\/\0\r\n:*?"<>|]/g, '_').replace(/^\.+/, '').trim().slice(0, 200);
@@ -292,7 +298,7 @@ app.post('/api/upload/:id/finish', auth, express.json({ limit: '10kb' }), async 
   const rec = {
     id: u.id, token: newLinkToken(), name: downloadName, originalName: entryName,
     size: u.size, createdAt: Date.now(), expiresAt,
-    pw: linkPassword ? hashPw(linkPassword) : null,
+    pw: linkPassword ? await hashPw(linkPassword) : null,
     zipped, zipEncrypted: !!zipPassword, status: 'processing', revoked: false, downloads: 0, file: null
   };
   db.files[rec.id] = rec;
@@ -338,7 +344,7 @@ app.patch('/api/files/:id', auth, express.json({ limit: '10kb' }), async (req, r
     }
   }
   if (b.removePassword) r.pw = null;
-  else if (typeof b.password === 'string' && b.password) r.pw = hashPw(b.password);
+  else if (typeof b.password === 'string' && b.password) r.pw = await hashPw(b.password);
   await save();
   res.json({ ok: true });
 });
@@ -449,14 +455,14 @@ app.get('/d/:token', (req, res) => {
   send(res, r ? landing(r, req.params.token) : notFound());
 });
 
-app.post('/d/:token', express.urlencoded({ extended: false, limit: '10kb' }), (req, res) => {
+app.post('/d/:token', express.urlencoded({ extended: false, limit: '10kb' }), async (req, res) => {
   const token = req.params.token;
   const r = liveRecord(token);
   if (!r) return send(res, notFound());
   if (!r.pw) return res.redirect(303, `/d/${token}/file`);
   const key = 'dl:' + token + ':' + req.ip;
   if (limited(key)) return send(res, page('محدودیت', '<h1>تلاش‌های زیاد</h1><p class="m">چند دقیقه بعد دوباره امتحان کنید.</p>', 429));
-  if (!checkPw((req.body || {}).password || '', r.pw)) { addFail(key); return send(res, landing(r, token, 'رمز اشتباه است.')); }
+  if (!(await checkPw((req.body || {}).password || '', r.pw))) { addFail(key); return send(res, landing(r, token, 'رمز اشتباه است.')); }
   fails.delete(key);
   setCookie(req, res, 'dl_' + token, makeToken({ t: 'dl', k: token, exp: Date.now() + 10 * 60 * 1000 }), 10 * 60 * 1000, '/d/' + token);
   res.redirect(303, `/d/${token}/file`);

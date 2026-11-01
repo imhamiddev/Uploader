@@ -185,6 +185,10 @@ const known = new Set(Object.values(db.files).map(r => r.file).filter(Boolean));
 for (const f of fs.readdirSync(FILES)) {
   if (!known.has(f)) unlinkQuiet(path.join(FILES, f));
 }
+const knownTexts = new Set(Object.values(db.texts).map(t => t.id + '.enc'));
+for (const f of fs.readdirSync(TEXTS)) {
+  if (!knownTexts.has(f)) unlinkQuiet(path.join(TEXTS, f));
+}
 save();
 
 // ---- zip ----------------------------------------------------------------
@@ -704,6 +708,9 @@ async function cleanup() {
     if (r.status === 'processing') continue;
     // failed records hold no usable file; drop them after a day so they stop counting against the quota
     if (isExpired(r) || (r.status === 'failed' && Date.now() - r.createdAt > 24 * 3600 * 1000)) await deleteRecord(r);
+  }
+  for (const t of Object.values(db.texts)) {
+    if (isExpired(t) || t.consumed) await deleteText(t); // consumed = one-time text that was read
   }
   for (const u of Object.values(db.uploads)) {
     if (!finishing.has(u.id) && Date.now() - u.last > 24 * 3600 * 1000) {

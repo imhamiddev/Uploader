@@ -730,6 +730,33 @@ $('#start').onclick = async () => {
   refresh();
 };
 
+/* ---------- QR code (generated locally, nothing leaves the browser) ---------- */
+function drawQr(canvas, text, target = 1024) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount(), quiet = 4, total = n + quiet * 2;
+  const scale = Math.max(2, Math.floor(target / total));
+  canvas.width = canvas.height = total * scale;
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = '#000';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) g.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+}
+function showQr(url, label, note) {
+  try { drawQr($('#qrCanvas'), url); } catch { return toast('ساخت QR کد ممکن نشد (لینک خیلی طولانی است).', 'err'); }
+  $('#qrTitle').textContent = 'QR کد: ' + label;
+  $('#qrNote').textContent = note || '';
+  $('#qrDl').onclick = () => $('#qrCanvas').toBlob(b => {
+    const a = el('a', { href: URL.createObjectURL(b), download: 'qr-' + (String(label).replace(/[^\w\u0600-\u06FF.-]+/g, '_').slice(0, 40) || 'link') + '.png' });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, 'image/png');
+  $('#qrDlg').showModal();
+}
+$('#qrClose').onclick = () => $('#qrDlg').close();
+const qrBtn = (url, label, note) => el('button', { class: 'btn sm', type: 'button', onclick: () => showQr(url, label, note) }, ic('qr'), el('span', {}, 'QR'));
+
 /* ---------- file list ---------- */
 const meta = (icon, text) => el('span', {}, ic(icon), text);
 
@@ -781,7 +808,7 @@ async function refresh() {
         f.status === 'ready' && !f.link && el('span', { class: 'tag bad' }, ic('ban'), 'لینک باطل شده')),
       f.status === 'ready' && f.link && el('div', { class: 'link' },
         el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک دانلود', onclick: e => e.target.select() }),
-        copyBtn),
+        copyBtn, qrBtn(full, f.name)),
       el('div', { class: 'acts' },
         f.status === 'ready' && (f.link
           ? el('button', { class: 'btn sm', type: 'button', onclick: () => act(`/api/files/${f.id}/revoke`, 'POST', 'لینک باطل شد.', { msg: 'این لینک باطل شود؟ هرکس آن را دارد دیگر نمی‌تواند دانلود کند.', ok: 'باطل کردن', title: 'باطل کردن لینک' }) }, ic('ban'), 'باطل کردن لینک')
@@ -834,7 +861,7 @@ $('#txSend').onclick = async () => {
     $('#txResult').replaceChildren(el('div', { class: 'q done' },
       el('div', { class: 'q-top' }, el('span', { class: 'q-name' }, 'لینک امن ساخته شد'), el('span', { class: 'q-st ok' }, ic('check'))),
       el('div', { class: 'link' },
-        el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک متن', onclick: e => e.target.select() }), cb),
+        el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک متن', onclick: e => e.target.select() }), cb, qrBtn(full, 'text')),
       el('div', { class: 'hint', style: 'margin-top:8px' }, pw ? 'رمز را از راهی جدا از لینک ارسال کنید.' : 'این متن رمز ندارد؛ هرکس لینک را داشته باشد می‌تواند آن را ببیند.')));
     txBody.value = ''; $('#txTitle').value = ''; $('#txPw').value = ''; $('#txPw').type = 'password'; $('#txCount').textContent = '';
     toast('متن رمزگذاری و ذخیره شد.', 'ok');
@@ -871,7 +898,7 @@ async function refreshTexts() {
         t.burn && el('span', { class: 'tag warn' }, ic('flame'), 'یک‌بار مصرف'),
         !t.link && el('span', { class: 'tag bad' }, ic('ban'), 'لینک باطل شده')),
       t.link && el('div', { class: 'link' },
-        el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک متن', onclick: e => e.target.select() }), cb),
+        el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک متن', onclick: e => e.target.select() }), cb, qrBtn(full, t.title || 'text')),
       el('div', { class: 'acts' },
         t.link
           ? el('button', { class: 'btn sm', type: 'button', onclick: () => act(`/api/texts/${t.id}/revoke`, 'POST', 'لینک باطل شد.', { msg: 'این لینک باطل شود؟ هرکس آن را دارد دیگر نمی‌تواند متن را ببیند.', ok: 'باطل کردن', title: 'باطل کردن لینک' }) }, ic('ban'), 'باطل کردن لینک')

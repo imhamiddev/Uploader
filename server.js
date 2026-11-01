@@ -147,6 +147,11 @@ for (const f of fs.readdirSync(TMP)) {
   const id = f.replace(/\.part$/, '');
   if (!db.uploads[id]) unlinkQuiet(path.join(TMP, f));
 }
+// files on disk that no record points to (e.g. crash between unlink and db save) waste quota
+const known = new Set(Object.values(db.files).map(r => r.file).filter(Boolean));
+for (const f of fs.readdirSync(FILES)) {
+  if (!known.has(f)) unlinkQuiet(path.join(FILES, f));
+}
 save();
 
 // ---- zip ----------------------------------------------------------------

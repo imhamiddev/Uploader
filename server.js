@@ -42,7 +42,14 @@ fs.mkdirSync(TMP, { recursive: true });
 
 // ---- tiny JSON database ---------------------------------------------
 let db = { files: {}, uploads: {} };
-try { db = Object.assign(db, JSON.parse(fs.readFileSync(DBF, 'utf8'))); } catch { /* first run */ }
+try { db = Object.assign(db, JSON.parse(fs.readFileSync(DBF, 'utf8'))); } catch (e) {
+  if (e.code !== 'ENOENT') { // corrupted db.json: keep a copy instead of silently overwriting it
+    try { fs.copyFileSync(DBF, DBF + '.corrupt-' + Date.now()); } catch { /* ignore */ }
+    console.error('db.json could not be read, starting empty:', e.message);
+  }
+}
+if (!db.files || typeof db.files !== 'object') db.files = {};
+if (!db.uploads || typeof db.uploads !== 'object') db.uploads = {};
 let saving = Promise.resolve();
 function save() {
   saving = saving.then(async () => {

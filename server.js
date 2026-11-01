@@ -691,6 +691,11 @@ app.post('/t/:token', express.urlencoded({ extended: false, limit: '10kb' }), as
 });
 
 // ---- admin UI -----------------------------------------------------------------
+// QR generator is served from node_modules so the page makes no third-party requests.
+app.get('/vendor/qrcode.js', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=604800');
+  res.type('js').sendFile(require.resolve('qrcode-generator'));
+});
 app.use('/fonts', express.static(path.join(__dirname, 'public', 'fonts'), { maxAge: '30d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', maxAge: 0 }));
 app.use((req, res) => res.status(404).type('text').send('Not found'));

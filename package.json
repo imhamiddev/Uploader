@@ -15,7 +15,8 @@
   "dependencies": {
     "archiver": "^7.0.1",
     "archiver-zip-encrypted": "^2.0.0",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "qrcode-generator": "^2.0.4"
   },
   "license": "UNLICENSED"
 }

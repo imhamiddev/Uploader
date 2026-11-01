@@ -9,7 +9,6 @@ import type { Metadata } from "next"
 
 import { PasswordGate } from "@/components/download/password-gate"
 import { Badge } from "@/components/ui/badge"
-import { buttonVariants } from "@/components/ui/button"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -108,7 +107,7 @@ export default async function DownloadPage({ params }: Params) {
           ) : (
             <Button
               size="lg"
-              className={buttonVariants({ size: "lg", className: "w-full" })}
+              className="w-full"
               nativeButton={false}
               render={<a href={`/d/${token}/file`} download />}
             >

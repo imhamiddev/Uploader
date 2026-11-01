@@ -118,9 +118,10 @@ const isExpired = r => r.expiresAt && r.expiresAt <= Date.now();
 const fails = new Map();
 const limited = k => { const f = fails.get(k); return !!(f && f.n >= 5 && f.until > Date.now()); };
 function addFail(k) {
-  let f = fails.get(k) || { n: 0, until: 0 };
-  if (f.until && f.until <= Date.now()) f = { n: 0, until: 0 };
+  let f = fails.get(k) || { n: 0, until: 0, t: 0 };
+  if (f.until && f.until <= Date.now()) f = { n: 0, until: 0, t: 0 };
   f.n++;
+  f.t = Date.now();
   if (f.n >= 5) f.until = Date.now() + 15 * 60 * 1000;
   fails.set(k, f);
 }
@@ -523,6 +524,8 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 
 // ---- periodic cleanup ------------------------------------------------------------
 async function cleanup() {
+  // drop stale rate-limiter entries so the map cannot grow without bound
+  for (const [k, f] of fails) if (Date.now() - f.t > 15 * 60 * 1000 && (!f.until || f.until <= Date.now())) fails.delete(k);
   for (const r of Object.values(db.files)) {
     if (isExpired(r) && r.status !== 'processing') await deleteRecord(r);
   }

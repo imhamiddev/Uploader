@@ -242,7 +242,9 @@ app.post('/api/login', express.json({ limit: '10kb' }), (req, res) => {
   const key = 'login:' + req.ip;
   if (limited(key)) return res.status(429).json({ error: 'تلاش‌های زیاد. ۱۵ دقیقه بعد دوباره امتحان کنید.' });
   const { username, password } = req.body || {};
-  const ok = safeEq(username || '', ADMIN_USER) & safeEq(password || '', ADMIN_PASS); // no short-circuit
+  const userOk = safeEq(username || '', ADMIN_USER);
+  const passOk = safeEq(password || '', ADMIN_PASS); // both are always evaluated (no early exit)
+  const ok = userOk && passOk;
   if (!ok) { addFail(key); return res.status(401).json({ error: 'نام کاربری یا رمز اشتباه است.' }); }
   fails.delete(key);
   setCookie(req, res, 'sid', makeToken({ t: 'admin', u: ADMIN_USER, exp: Date.now() + 7 * 864e5 }), 7 * 864e5);

@@ -85,9 +85,12 @@ export function Dashboard() {
   const processing = data?.files.some((f) => f.status === "processing") ?? false
 
   React.useEffect(() => {
-    void load()
+    const first = setTimeout(load, 0)
     const t = setInterval(load, processing ? 2000 : 30000)
-    return () => clearInterval(t)
+    return () => {
+      clearTimeout(first)
+      clearInterval(t)
+    }
   }, [load, processing])
 
   const fail = (e: unknown) =>

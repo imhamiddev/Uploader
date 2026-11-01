@@ -32,6 +32,8 @@ if (!process.env.SESSION_SECRET) {
 }
 if (String(ADMIN_PASS).length < 8) console.warn('[warn] ADMIN_PASS is shorter than 8 characters. Use a stronger password.');
 const QUOTA = (parseFloat(process.env.QUOTA_GB) || 4.5) * 1024 ** 3;
+const B64U = /^[A-Za-z0-9_-]+$/;
+const b64uOk = (s, max) => typeof s === 'string' && s.length > 0 && s.length <= max && B64U.test(s);
 const MAX_BUNDLE = 200; // files allowed in one multi-file link
 const MAX_PENDING = 250; // unfinished uploads allowed at the same time (>= MAX_BUNDLE)
 const CHUNK = 5 * 1024 * 1024; // 5 MB per request: safe for proxy / timeout limits
@@ -376,18 +378,27 @@ app.post('/api/upload/:id/finish', auth, express.json({ limit: '10kb' }), async 
     expiresAt = Number(b.expiresAt);
     if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return res.status(400).json({ error: 'زمان انقضا نامعتبر است.' });
   }
+  // End-to-end encrypted upload: the bytes are already ciphertext made in the browser, so the
+  // server stores them untouched (no zip, no rename, no server-side password) plus opaque metadata.
+  let e2e = null;
+  if (b.e2e) {
+    const x = b.e2e;
+    const hasPw = !!(x.salt || x.vfy);
+    if (!b64uOk(x.meta, 4096) || (hasPw && (!b64uOk(x.salt, 100) || !b64uOk(x.vfy, 100)))) return res.status(400).json({ error: 'اطلاعات رمزگذاری نامعتبر است.' });
+    e2e = { meta: x.meta, salt: hasPw ? x.salt : null, vfy: hasPw ? x.vfy : null };
+  }
   // Name switch: on (b.rename truthy) -> user-supplied name; off -> a random
   // numeric name is generated server-side regardless of what the client sent.
-  const renameOn = !!b.rename;
+  const renameOn = !!b.rename && !e2e;
   const ext = (u.name.match(/\.[^./\\]+$/) || [''])[0];
-  const baseName = renameOn ? cleanName(b.name, u.name) : randomDigits(10) + ext;
+  const baseName = e2e ? 'encrypted.bin' : renameOn ? cleanName(b.name, u.name) : randomDigits(10) + ext;
   const entryName = baseName; // name used inside the zip / as the stored file name
-  const zipped = !!b.zip;
+  const zipped = !!b.zip && !e2e;
   const downloadName = zipped ? (baseName.replace(/\.[^.]*$/, '') || baseName) + '.zip' : baseName;
 
   // Link password (gates the download page) vs zip content password (encrypts
   // the archive itself, AES-256) are independent and either/both may be set.
-  const linkPassword = b.password ? String(b.password) : '';
+  const linkPassword = b.password && !e2e ? String(b.password) : '';
   const zipPassword = zipped && b.zipPassword ? String(b.zipPassword) : '';
 
   const pwHash = linkPassword ? await hashPw(linkPassword) : null;
@@ -405,6 +416,7 @@ app.post('/api/upload/:id/finish', auth, express.json({ limit: '10kb' }), async 
     pw: pwHash,
     zipped, zipEncrypted: !!zipPassword, status: 'processing', revoked: false, downloads: 0, file: null
   };
+  if (e2e) Object.assign(rec, { e2e: true, e2eMeta: e2e.meta, e2eSalt: e2e.salt, e2eVfy: e2e.vfy });
   db.files[rec.id] = rec;
   delete db.uploads[u.id];
   finishing.delete(u.id);
@@ -466,7 +478,7 @@ app.get('/api/files', auth, (req, res) => {
     .sort((a, b) => b.createdAt - a.createdAt)
     .map(r => ({
       id: r.id, name: r.name, size: r.size, createdAt: r.createdAt, expiresAt: r.expiresAt,
-      hasPassword: !!r.pw, bundle: r.bundle || 0, zipped: r.zipped, zipEncrypted: !!r.zipEncrypted, status: r.status, error: r.error || null,
+      hasPassword: !!r.pw, e2e: !!r.e2e, e2eMeta: r.e2e ? r.e2eMeta : null, e2ePw: !!(r.e2e && r.e2eSalt), bundle: r.bundle || 0, zipped: r.zipped, zipEncrypted: !!r.zipEncrypted, status: r.status, error: r.error || null,
       downloads: r.downloads, link: r.token && !r.revoked ? '/d/' + r.token : null
     }));
   res.json({ files: list, used: usedBytes(), quota: QUOTA });
@@ -476,7 +488,8 @@ app.patch('/api/files/:id', auth, express.json({ limit: '10kb' }), async (req, r
   const r = db.files[req.params.id];
   if (!r) return res.status(404).json({ error: 'فایل پیدا نشد.' });
   const b = req.body || {};
-  if (typeof b.name === 'string' && b.name.trim()) {
+  // E2E records: the real name is encrypted client-side and the key is the only secret, so name/password edits do not apply
+  if (typeof b.name === 'string' && b.name.trim() && !r.e2e) {
     let n = cleanName(b.name, r.name);
     if (r.zipped && !/\.zip$/i.test(n)) n += '.zip';
     r.name = n;
@@ -489,7 +502,8 @@ app.patch('/api/files/:id', auth, express.json({ limit: '10kb' }), async (req, r
       r.expiresAt = t;
     }
   }
-  if (b.removePassword) r.pw = null;
+  if (r.e2e) { /* no server-side password gate for E2E links */ }
+  else if (b.removePassword) r.pw = null;
   else if (typeof b.password === 'string' && b.password) r.pw = await hashPw(b.password);
   await save();
   res.json({ ok: true });

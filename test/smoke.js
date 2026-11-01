@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const assert = require('assert');
+const E2E = require('../public/e2e.js');
 
 const PORT = 3900 + Math.floor(Math.random() * 90);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -51,6 +52,7 @@ async function upload(size, opts) {
 
 (async () => {
   await waitUp();
+  const form = { 'content-type': 'application/x-www-form-urlencoded' };
 
   // auth
   assert.strictEqual((await req('/api/files')).status, 401, 'files require auth');
@@ -130,8 +132,64 @@ async function upload(size, opts) {
   const qrjs = await fetch(BASE + '/vendor/qrcode.js');
   assert.strictEqual(qrjs.status, 200); assert.ok((await qrjs.text()).includes('qrcode'));
 
+  // ---- end-to-end encrypted file: the server must only ever see ciphertext ----
+  const marker = Buffer.from('TOP-SECRET-E2E-MARKER-' + 'x'.repeat(40));
+  const plainFile = Buffer.concat([marker, Buffer.alloc(CHUNK + 5000, 5)]);
+  const ek = await E2E.newKey();
+  const emeta = await E2E.sealMeta(ek.key, { name: 'secret-plan.pdf', type: 'application/pdf', size: plainFile.length });
+  const einit = await (await req('/api/upload/init', { method: 'POST', json: { name: 'encrypted.bin', size: E2E.cipherSize(plainFile.length) } })).json();
+  let ci = 0;
+  for await (const c of E2E.encryptChunks(ek.key, new Blob([plainFile]), einit.chunkSize)) {
+    assert.strictEqual((await req(`/api/upload/${einit.id}/${ci++}`, { method: 'PUT', body: c })).status, 200, 'ciphertext chunk accepted');
+  }
+  assert.strictEqual((await req(`/api/upload/${einit.id}/finish`, { method: 'POST', json: { e2e: { meta: '!!bad!!' } } })).status, 400, 'bad e2e metadata rejected');
+  assert.strictEqual((await req(`/api/upload/${einit.id}/finish`, { method: 'POST', json: { zip: true, password: 'ignored', rename: true, name: 'leak.pdf', e2e: { meta: emeta } } })).status, 200);
+  let erec;
+  for (let i = 0; i < 100 && !(erec && erec.status !== 'processing'); i++) { await sleep(100); erec = (await (await req('/api/files')).json()).files.find(x => x.id === einit.id); }
+  assert.strictEqual(erec.status, 'ready'); assert.ok(erec.e2e && !erec.zipped && !erec.hasPassword, 'e2e ignores zip/server password');
+  assert.strictEqual(erec.name, 'encrypted.bin', 'real file name never reaches the server');
+  const stored = fs.readdirSync(path.join(DATA, 'files')).map(f => fs.readFileSync(path.join(DATA, 'files', f)));
+  assert.ok(stored.every(b => !b.includes(marker.subarray(0, 24))), 'no plaintext on disk');
+  assert.ok(!fs.readFileSync(path.join(DATA, 'db.json'), 'utf8').includes('secret-plan'), 'file name not in db');
+  const adminCookie = cookie; cookie = '';
+  const elanding = await (await req(erec.link)).text();
+  assert.ok(elanding.includes('data-kind="file"') && elanding.includes(`data-meta="${emeta}"`) && elanding.includes('/viewer.js'), 'e2e landing page');
+  assert.ok(!elanding.includes('secret-plan'), 'landing page does not leak the name');
+  assert.strictEqual((await req(erec.link, { method: 'POST', body: '', headers: form })).status, 303, 'password form not used for e2e');
+  const edl = Buffer.from(await (await req(erec.link + '/file')).arrayBuffer());
+  assert.strictEqual(edl.length, E2E.cipherSize(plainFile.length));
+  const dec = E2E.createDecryptor(ek.key, edl.length), got = [];
+  for (let o = 0; o < edl.length; o += 70001) got.push(...(await dec.push(edl.subarray(o, o + 70001))).map(Buffer.from));
+  dec.done();
+  assert.ok(Buffer.concat(got).equals(plainFile), 'client can decrypt what the server returned');
+  assert.strictEqual((await E2E.openMeta(ek.key, emeta)).name, 'secret-plan.pdf');
+  cookie = adminCookie;
+  assert.strictEqual((await req(`/api/files/${einit.id}`, { method: 'PATCH', json: { password: 'x', name: 'leak' } })).status, 200);
+  const after = (await (await req('/api/files')).json()).files.find(x => x.id === einit.id);
+  assert.ok(!after.hasPassword && after.name === 'encrypted.bin', 'password/name edits ignored for e2e');
+  assert.strictEqual((await req(`/api/files/${einit.id}`, { method: 'DELETE' })).status, 200);
+
+  // ---- end-to-end encrypted text (+ one-time) ----
+  const tk = await E2E.newKey();
+  const tpayload = E2E.b64uEnc(await E2E.sealText(tk.key, 'E2E-TEXT-MARKER-98765'));
+  const tmeta = await E2E.sealMeta(tk.key, { v: 1 });
+  assert.strictEqual((await req('/api/texts', { method: 'POST', json: { e2e: true, payload: 'AA', meta: tmeta } })).status, 400, 'tiny/invalid payload rejected');
+  const et = await (await req('/api/texts', { method: 'POST', json: { e2e: true, payload: tpayload, meta: tmeta, chars: 21, burn: true, title: 't' } })).json();
+  assert.ok(!fs.readFileSync(path.join(DATA, 'texts', et.id + '.enc')).includes('E2E-TEXT-MARKER'), 'no plaintext on disk');
+  cookie = '';
+  const tgate = await req(et.link); const tgateHtml = await tgate.text();
+  assert.ok(tgateHtml.includes('data-kind="text"') && !tgateHtml.includes(tpayload), 'gate has no payload');
+  await req(et.link); // crawlers may GET repeatedly without burning it
+  assert.strictEqual((await req(et.link + '/reveal', { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } })).status, 403, 'cross-site reveal blocked');
+  const rv = await req(et.link + '/reveal', { method: 'POST' });
+  assert.strictEqual(rv.status, 200);
+  const rj = await rv.json();
+  assert.strictEqual(await E2E.openText(tk.key, E2E.b64uDec(rj.payload)), 'E2E-TEXT-MARKER-98765');
+  assert.strictEqual((await req(et.link + '/reveal', { method: 'POST' })).status, 404, 'one-time e2e text is gone after reveal');
+  await sleep(200);
+  cookie = adminCookie;
+
   // ---- encrypted texts ----
-  const form = { 'content-type': 'application/x-www-form-urlencoded' };
   const secretText = 'سلام <b>x</b> & secret-marker-12345';
   assert.strictEqual((await req('/api/texts', { method: 'POST', json: { text: '   ' } })).status, 400, 'empty text rejected');
   assert.strictEqual((await req('/api/texts', { method: 'POST', json: { text: 'a'.repeat(1024 * 1024 + 1) } })).status, 413, 'oversize text rejected');

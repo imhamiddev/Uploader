@@ -195,6 +195,10 @@ save();
 // zipPassword encrypts the archive contents itself (AES-256); independent of
 // the share-link password gate (rec.pw), which only guards the download page.
 function zipFile(src, dest, entryName, zipPassword) {
+  return zipFiles([{ path: src, name: entryName }], dest, zipPassword);
+}
+// several source files -> one archive (used for multi-file share links)
+function zipFiles(items, dest, zipPassword) {
   return new Promise((resolve, reject) => {
     const out = fs.createWriteStream(dest);
     const zip = zipPassword
@@ -204,9 +208,39 @@ function zipFile(src, dest, entryName, zipPassword) {
     out.on('error', reject);
     zip.on('error', reject);
     zip.pipe(out);
-    zip.file(src, { name: entryName });
+    for (const it of items) zip.file(it.path, { name: it.name });
     zip.finalize();
   });
+}
+
+// "a.txt", "a.txt" -> "a.txt", "a (2).txt" so entries never overwrite each other in the archive
+function uniqueNames(names) {
+  const seen = new Map();
+  return names.map(n => {
+    const k = n.toLowerCase();
+    const c = (seen.get(k) || 0) + 1;
+    seen.set(k, c);
+    if (c === 1) return n;
+    const m = n.match(/^(.*?)(\.[^.]*)?$/);
+    return `${m[1]} (${c})${m[2] || ''}`;
+  });
+}
+
+async function processBundle(rec, items, zipPassword) {
+  try {
+    rec.file = rec.id + '.zip';
+    const dest = path.join(FILES, rec.file);
+    await zipFiles(items, dest, zipPassword);
+    rec.size = (await fsp.stat(dest)).size;
+    rec.status = 'ready';
+  } catch (e) {
+    console.error('bundle failed', e);
+    rec.status = 'failed';
+    rec.error = String(e.message || e);
+    if (rec.file) await unlinkQuiet(path.join(FILES, rec.file));
+  }
+  for (const it of items) await unlinkQuiet(it.path);
+  await save();
 }
 
 async function processUpload(rec, tmpPath, entryName, zipPassword) {

@@ -177,6 +177,8 @@ main.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding-bloc
 .switch input:checked:active+.trk::before{transform:translateX(-24px)}
 .switch input:focus-visible+.trk{outline:2px solid var(--primary);outline-offset:2px}
 
+.qr-box{display:grid;place-items:center;padding:16px;background:#fff;border-radius:20px;border:1px solid var(--border-strong)}
+.qr-box canvas{width:min(280px,68vw);height:auto;aspect-ratio:1;image-rendering:pixelated;display:block}
 .col{display:flex;flex-direction:column;gap:16px;min-width:0}
 .area{height:auto;min-height:150px;padding:14px 18px;border-radius:22px;resize:vertical;line-height:1.8;font-family:var(--font)}
 .pwrow{display:flex;gap:8px}
@@ -456,8 +458,18 @@ dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);b
   </form>
 </dialog>
 
+<dialog id="qrDlg">
+  <div class="dlg">
+    <h2 id="qrTitle">QR کد لینک</h2>
+    <div class="qr-box"><canvas id="qrCanvas" width="300" height="300" role="img" aria-label="QR کد لینک"></canvas></div>
+    <span class="hint" id="qrNote"></span>
+    <div class="dlg-acts"><button class="btn" id="qrClose" type="button">بستن</button><button class="btn pri" id="qrDl" type="button">دانلود تصویر</button></div>
+  </div>
+</dialog>
+
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script src="/vendor/qrcode.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 
@@ -485,6 +497,7 @@ const P = {
   ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
   refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
   alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  qr: '<rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3M21 21v.01M12 7v3a2 2 0 0 1-2 2H7M3 12h.01M12 3h.01M12 16v.01M16 12h1M21 12v.01M12 21v-1"/>',
   folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'
 };
 function ic(name) {

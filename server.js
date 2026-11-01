@@ -32,6 +32,7 @@ if (!process.env.SESSION_SECRET) {
 }
 if (String(ADMIN_PASS).length < 8) console.warn('[warn] ADMIN_PASS is shorter than 8 characters. Use a stronger password.');
 const QUOTA = (parseFloat(process.env.QUOTA_GB) || 4.5) * 1024 ** 3;
+const MAX_BUNDLE = 200; // files allowed in one multi-file link
 const MAX_PENDING = 50; // unfinished uploads allowed at the same time
 const CHUNK = 5 * 1024 * 1024; // 5 MB per request: safe for proxy / timeout limits
 
@@ -412,6 +413,47 @@ app.post('/api/upload/:id/finish', auth, express.json({ limit: '10kb' }), async 
   processUpload(rec, tmpPath, entryName, zipPassword); // async; UI polls status
 });
 
+// Several finished uploads -> ONE share link (a single ZIP that holds all of them).
+app.post('/api/bundle/finish', auth, express.json({ limit: '100kb' }), async (req, res) => {
+  const b = req.body || {};
+  const ids = Array.isArray(b.ids) ? [...new Set(b.ids.map(String))] : [];
+  if (ids.length < 1 || ids.length > MAX_BUNDLE) return res.status(400).json({ error: `تعداد فایل باید بین ۱ و ${MAX_BUNDLE} باشد.` });
+  const ups = ids.map(i => db.uploads[i]);
+  if (ups.some(u => !u || finishing.has(u.id))) return res.status(404).json({ error: 'یکی از آپلودها پیدا نشد.' });
+
+  let expiresAt = null;
+  if (b.expiresAt != null) {
+    expiresAt = Number(b.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return res.status(400).json({ error: 'زمان انقضا نامعتبر است.' });
+  }
+  const linkPassword = b.password ? String(b.password) : '';
+  const zipPassword = b.zipPassword ? String(b.zipPassword) : '';
+  const pwHash = linkPassword ? await hashPw(linkPassword) : null;
+
+  // claim every upload before the next await (same guard as single-file finish)
+  if (ups.some(u => finishing.has(u.id) || db.uploads[u.id] !== u)) return res.status(409).json({ error: 'این آپلودها در حال تکمیل هستند.' });
+  ups.forEach(u => finishing.add(u.id));
+  const release = () => ups.forEach(u => finishing.delete(u.id));
+  const sts = await Promise.all(ups.map(u => fsp.stat(path.join(TMP, u.id + '.part')).catch(() => null)));
+  if (sts.some((st, i) => !st || st.size !== ups[i].size)) { release(); return res.status(400).json({ error: 'یکی از فایل‌ها ناقص دریافت شد.' }); }
+
+  const names = uniqueNames(ups.map(u => cleanName(u.name, 'file')));
+  const items = ups.map((u, i) => ({ path: path.join(TMP, u.id + '.part'), name: names[i] }));
+  const zipBase = b.rename && b.name ? cleanName(b.name, '').replace(/\.zip$/i, '') : '';
+  const downloadName = (zipBase || 'files-' + randomDigits(8)) + '.zip';
+  const rec = {
+    id: newId(), token: newLinkToken(), name: downloadName, originalName: downloadName,
+    size: ups.reduce((n, u) => n + u.size, 0), createdAt: Date.now(), expiresAt, pw: pwHash,
+    zipped: true, zipEncrypted: !!zipPassword, bundle: ups.length, status: 'processing', revoked: false, downloads: 0, file: null
+  };
+  db.files[rec.id] = rec;
+  ups.forEach(u => delete db.uploads[u.id]); // their bytes are now accounted for by rec.size
+  release();
+  await save();
+  res.json({ ok: true, id: rec.id });
+  processBundle(rec, items, zipPassword); // async; UI polls status
+});
+
 app.delete('/api/upload/:id', auth, async (req, res) => {
   const u = db.uploads[req.params.id];
   if (u && !finishing.has(u.id)) { delete db.uploads[u.id]; await unlinkQuiet(path.join(TMP, u.id + '.part')); save(); }
@@ -424,7 +466,7 @@ app.get('/api/files', auth, (req, res) => {
     .sort((a, b) => b.createdAt - a.createdAt)
     .map(r => ({
       id: r.id, name: r.name, size: r.size, createdAt: r.createdAt, expiresAt: r.expiresAt,
-      hasPassword: !!r.pw, zipped: r.zipped, zipEncrypted: !!r.zipEncrypted, status: r.status, error: r.error || null,
+      hasPassword: !!r.pw, bundle: r.bundle || 0, zipped: r.zipped, zipEncrypted: !!r.zipEncrypted, status: r.status, error: r.error || null,
       downloads: r.downloads, link: r.token && !r.revoked ? '/d/' + r.token : null
     }));
   res.json({ files: list, used: usedBytes(), quota: QUOTA });

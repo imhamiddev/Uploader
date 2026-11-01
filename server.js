@@ -32,6 +32,7 @@ if (!process.env.SESSION_SECRET) {
 }
 if (String(ADMIN_PASS).length < 8) console.warn('[warn] ADMIN_PASS is shorter than 8 characters. Use a stronger password.');
 const QUOTA = (parseFloat(process.env.QUOTA_GB) || 4.5) * 1024 ** 3;
+const MAX_PENDING = 50; // unfinished uploads allowed at the same time
 const CHUNK = 5 * 1024 * 1024; // 5 MB per request: safe for proxy / timeout limits
 
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -251,12 +252,14 @@ app.get('/api/me', auth, (req, res) => res.json({ ok: true }));
 
 // ---- chunked upload ---------------------------------------------------------
 app.post('/api/upload/init', auth, express.json({ limit: '10kb' }), async (req, res) => {
-  const size = Number(req.body && req.body.size);
-  if (!Number.isFinite(size) || size < 0) return res.status(400).json({ error: 'حجم نامعتبر' });
+  const b = req.body || {};
+  const size = typeof b.size === 'number' ? b.size : NaN;
+  if (!Number.isSafeInteger(size) || size < 0) return res.status(400).json({ error: 'حجم نامعتبر' });
+  if (Object.keys(db.uploads).length >= MAX_PENDING) return res.status(429).json({ error: 'آپلودهای ناتمام زیاد است. کمی بعد دوباره امتحان کنید.' });
   if (usedBytes() + size > QUOTA) return res.status(413).json({ error: 'فضای کافی نیست.' });
   const id = newId();
   await fsp.writeFile(path.join(TMP, id + '.part'), '');
-  db.uploads[id] = { id, size, name: cleanName(req.body.name, 'file'), last: Date.now() };
+  db.uploads[id] = { id, size, name: cleanName(b.name, 'file'), last: Date.now() };
   save();
   res.json({ id, chunkSize: CHUNK });
 });

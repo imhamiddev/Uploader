@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="light dark">
+<title>آپلودساز</title>
+<link rel="preload" href="/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+/* theme is resolved before first paint to avoid a flash */
+try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light')t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='light'}
+</script>
+<style>
+/* ------------------------------------------------------------------
+   Design language: beUI (github.com/starc007/ui-components)
+   near-monochrome oklch surfaces, subtle structural borders, pill
+   controls, rounded-2xl cards, 4px spacing grid, strong ease-out
+   curves, no `transition: all`. Font: Vazirmatn (Vazir), self-hosted.
+------------------------------------------------------------------- */
+@font-face{font-family:"Vazirmatn";src:url("/fonts/Vazirmatn-Variable.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+
+:root{
+  color-scheme:light;
+  --background:oklch(99% 0 0);
+  --foreground:oklch(15% 0 0);
+  --card:oklch(97% 0 0);
+  --muted-fg:oklch(50% 0 0);
+  --border:oklch(15% 0 0 / .06);
+  --border-strong:oklch(15% 0 0 / .12);
+  --primary:#0285f7;
+  --accent:oklch(72% .18 195);
+  --violet:oklch(68% .22 295);
+  --danger:oklch(62% .22 25);
+  --danger-tx:oklch(54% .22 25);
+  --success:oklch(70% .18 155);
+  --success-tx:oklch(52% .15 155);
+  --warning:oklch(78% .18 75);
+  --warning-tx:oklch(55% .14 70);
+  --glass:oklch(99% 0 0 / .72);
+  --gradient-accent:linear-gradient(to right,oklch(72% .18 195),oklch(68% .22 295));
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-drawer:cubic-bezier(.32,.72,0,1);
+  --font:"Vazirmatn","Vazir",Tahoma,"Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --background:#151515;
+  --foreground:oklch(96% 0 0);
+  --card:#1c1c1c;
+  --muted-fg:oklch(62% 0 0);
+  --border:rgb(255 255 255 / .05);
+  --border-strong:rgb(255 255 255 / .1);
+  --accent:oklch(80% .18 195);
+  --danger-tx:oklch(72% .19 25);
+  --success-tx:oklch(78% .17 155);
+  --warning-tx:oklch(82% .15 80);
+  --glass:rgb(21 21 21 / .72);
+  --gradient-accent:linear-gradient(to right,oklch(80% .18 195),oklch(72% .18 295));
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100dvh;background:var(--background);color:var(--foreground);font-family:var(--font);font-size:14px;line-height:1.8;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;border:1px solid var(--border-strong);background:transparent;color:var(--foreground);font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap;
+  transition:background-color .15s var(--ease-out),border-color .15s var(--ease-out),color .15s var(--ease-out),transform .15s var(--ease-out),opacity .15s var(--ease-out)}
+.btn:hover{background:var(--border)}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:var(--foreground);color:var(--background);border-color:var(--foreground)}
+.btn.pri:hover{opacity:.88;background:var(--foreground)}
+.btn.sm{height:32px;padding:0 13px;font-size:12.5px;gap:6px}
+.btn.sm svg.i{width:14px;height:14px}
+.btn.danger{color:var(--danger-tx)}
+.btn.danger:hover{background:color-mix(in oklch,var(--danger) 12%,transparent);border-color:color-mix(in oklch,var(--danger) 35%,transparent)}
+.btn.solid-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.solid-danger:hover{background:var(--danger);opacity:.9}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn.pri:disabled{opacity:1;background:var(--border-strong);border-color:transparent;color:var(--muted-fg)}
+.btn.block{width:100%}
+.icon-btn{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:999px;border:0;background:transparent;color:var(--muted-fg);cursor:pointer;
+  transition:background-color .15s var(--ease-out),color .15s var(--ease-out),transform .15s var(--ease-out)}
+.icon-btn:hover{background:var(--border);color:var(--foreground)}
+.icon-btn:active{transform:scale(.92)}
+.icon-btn.sm{width:28px;height:28px}
+
+/* ---------- fields ---------- */
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.lbl{font-size:13px;font-weight:500;padding-inline:4px}
+.hint{font-size:12px;color:var(--muted-fg);padding-inline:4px}
+.input{width:100%;height:44px;padding:0 18px;border-radius:999px;border:1px solid var(--border-strong);background:var(--background);color:var(--foreground);outline:none;min-width:0;
+  transition:border-color .2s var(--ease-out),box-shadow .2s var(--ease-out),opacity .2s var(--ease-out)}
+.input::placeholder{color:var(--muted-fg);opacity:.8}
+.input:focus{border-color:color-mix(in oklch,var(--foreground) 40%,transparent);box-shadow:0 0 0 3px var(--border-strong)}
+.input:disabled{opacity:.5;cursor:not-allowed}
+.input.ltr{direction:ltr;text-align:left;font-family:var(--mono);font-size:12.5px}
+input[type=datetime-local].input{min-height:44px;text-align:right}
+
+/* ---------- surfaces ---------- */
+.container{max-width:1120px;margin-inline:auto;padding-inline:16px}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:24px;padding:20px}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.panel-h h2{margin:0;font-size:16px;font-weight:600;letter-spacing:-.01em}
+.count{font-size:12px;font-weight:500;color:var(--muted-fg);background:var(--border);border-radius:999px;padding:1px 10px}
+.tile{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:14px;background:var(--border);color:var(--muted-fg)}
+.tile svg.i{width:20px;height:20px}
+.tile.sm{width:36px;height:36px;border-radius:12px}
+.tile.sm svg.i{width:17px;height:17px}
+
+/* ---------- header ---------- */
+.hdr{position:sticky;top:0;z-index:20;background:var(--glass);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding-top:env(safe-area-inset-top)}
+.hdr-in{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;min-height:60px;padding-block:10px}
+.brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:12px;background:var(--gradient-accent);color:#fff}
+.mark svg.i{width:18px;height:18px;stroke-width:2.2}
+.usage{margin-inline-start:auto;width:220px}
+.usage-row{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted-fg);line-height:1.5;margin-bottom:5px}
+.meter{height:6px;border-radius:999px;background:var(--border-strong);overflow:hidden}
+.meter>i{display:block;height:100%;width:0;border-radius:999px;background:var(--foreground);transition:width .4s var(--ease-out),background-color .3s var(--ease-out)}
+.meter.hi>i{background:var(--danger)}
+.hdr-acts{display:flex;align-items:center;gap:2px}
+
+/* ---------- layout ---------- */
+main.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding-block:20px calc(48px + env(safe-area-inset-bottom))}
+@media (min-width:980px){main.grid{grid-template-columns:minmax(360px,420px) minmax(0,1fr);align-items:start;padding-top:28px}}
+
+/* ---------- upload panel ---------- */
+.drop{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:28px 16px;border:1.5px dashed var(--border-strong);border-radius:24px;background:var(--background);cursor:pointer;outline:none;
+  transition:border-color .2s var(--ease-out),background-color .2s var(--ease-out),transform .2s var(--ease-out)}
+.drop:hover,.drop:focus-visible{border-color:color-mix(in oklch,var(--foreground) 40%,transparent)}
+.drop:active{transform:scale(.992)}
+.drop.over{border-color:var(--foreground);background:var(--card)}
+.drop .tile{width:56px;height:56px;border-radius:20px}
+.drop .tile svg.i{width:24px;height:24px;color:var(--foreground)}
+.drop .t{font-weight:600;font-size:15px}
+.drop .s{font-size:12.5px;color:var(--muted-fg);margin-top:-6px}
+.drop .pill{display:inline-flex;align-items:center;height:32px;padding:0 16px;border-radius:999px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;transition:background-color .15s var(--ease-out)}
+.drop:hover .pill{background:var(--border)}
+
+.picked{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.picked:empty{display:none}
+.pick{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:16px;background:var(--background);animation:rise .22s var(--ease-out)}
+.pick-main{flex:1;min-width:0}
+.pick-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick-size{font-size:11.5px;color:var(--muted-fg);line-height:1.5}
+
+.opts{display:flex;flex-direction:column;gap:16px;margin-top:20px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border:1px solid var(--border-strong);border-radius:22px;background:var(--background)}
+.seg label{position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg span{display:block;padding:4px 8px;text-align:center;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--muted-fg);white-space:nowrap;
+  transition:background-color .2s var(--ease-out),color .2s var(--ease-out)}
+.seg label:hover span{color:var(--foreground)}
+.seg input:checked+span{background:var(--foreground);color:var(--background)}
+.seg input:focus-visible+span{outline:2px solid var(--primary);outline-offset:2px}
+
+.opt{border:1px solid var(--border);border-radius:20px;background:var(--background);padding:12px 14px}
+.opt-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.opt-t{font-size:13.5px;font-weight:600}
+.opt-s{font-size:12px;color:var(--muted-fg);line-height:1.7;margin-top:1px}
+.opt-extra{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);animation:rise .22s var(--ease-out)}
+
+.switch{position:relative;display:inline-block;width:48px;height:28px;flex:none}
+.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+.switch .trk{position:absolute;inset:0;border-radius:999px;background:color-mix(in oklch,var(--muted-fg) 55%,transparent);transition:background-color .2s var(--ease-out)}
+.switch .trk::before{content:"";position:absolute;top:4px;inset-inline-start:4px;width:20px;height:20px;border-radius:50%;background:var(--background);box-shadow:0 1px 4px rgb(0 0 0 / .3);
+  transition:transform .28s var(--ease-out),width .15s var(--ease-out)}
+.switch input:checked+.trk{background:var(--primary)}
+.switch input:checked+.trk::before{transform:translateX(-20px)}
+.switch input:active+.trk::before{width:24px}
+.switch input:checked:active+.trk::before{transform:translateX(-24px)}
+.switch input:focus-visible+.trk{outline:2px solid var(--primary);outline-offset:2px}
+
+.start-row{display:flex;align-items:center;gap:12px;margin-top:20px}
+.start-row .btn{height:46px;flex:1;font-size:15px}
+
+.queue{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.queue:empty{display:none}
+.q{padding:12px 14px;border:1px solid var(--border);border-radius:16px;background:var(--background);animation:rise .22s var(--ease-out)}
+.q-top{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+.q-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-st{flex:none;font-size:12px;color:var(--muted-fg);display:inline-flex;align-items:center;gap:5px}
+.q-st.ok{color:var(--success-tx)}
+.q-st.bad{color:var(--danger-tx)}
+.bar{height:6px;border-radius:999px;background:var(--border-strong);overflow:hidden;margin-top:10px}
+.bar>i{display:block;height:100%;width:0;border-radius:999px;background:var(--foreground);transition:width .25s var(--ease-out),background-color .3s var(--ease-out)}
+.q.done .bar>i{background:var(--success)}
+.q.fail .bar>i{background:var(--danger)}
+.q-clear{align-self:flex-start}
+
+/* ---------- file list ---------- */
+.list{display:flex;flex-direction:column;gap:10px}
+.file{border:1px solid var(--border);border-radius:20px;background:var(--background);padding:14px;animation:rise .24s var(--ease-out) both}
+.file-top{display:flex;align-items:center;gap:12px}
+.file-main{flex:1;min-width:0}
+.fn{font-weight:600;font-size:14.5px;line-height:1.6;overflow-wrap:anywhere}
+.meta{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:2px;font-size:12px;color:var(--muted-fg)}
+.meta span{display:inline-flex;align-items:center;gap:5px}
+.meta svg.i{width:13px;height:13px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.tags:empty{display:none}
+.tag{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:999px;font-size:11.5px;font-weight:500;background:var(--border);color:var(--muted-fg);white-space:nowrap}
+.tag svg.i{width:12px;height:12px}
+.tag.ok{color:var(--success-tx);background:color-mix(in oklch,var(--success) 14%,transparent)}
+.tag.warn{color:var(--warning-tx);background:color-mix(in oklch,var(--warning) 16%,transparent)}
+.tag.bad{color:var(--danger-tx);background:color-mix(in oklch,var(--danger) 12%,transparent)}
+.file-st{flex:none;align-self:flex-start}
+.link{display:flex;gap:8px;margin-top:12px}
+.link .input{height:40px;flex:1}
+.link .btn{height:40px;flex:none}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.acts:empty{display:none}
+.empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 16px;text-align:center;color:var(--muted-fg)}
+.empty .tile{width:52px;height:52px;border-radius:18px}
+.empty b{color:var(--foreground);font-weight:600}
+.spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:spin .8s linear infinite}
+
+/* ---------- login ---------- */
+#login{min-height:100dvh;display:grid;place-items:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom))}
+.login-card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--border);border-radius:28px;padding:28px 24px;animation:rise .3s var(--ease-out)}
+.login-card .mark{width:44px;height:44px;border-radius:16px;margin-bottom:18px}
+.login-card .mark svg.i{width:22px;height:22px}
+.login-card h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.login-card p{margin:2px 0 22px;color:var(--muted-fg);font-size:13px}
+.login-card form{display:flex;flex-direction:column;gap:14px}
+.err{min-height:22px;color:var(--danger-tx);font-size:13px;padding-inline:4px}
+
+/* ---------- dialogs ---------- */
+dialog{border:1px solid var(--border-strong);border-radius:28px;background:var(--card);color:var(--foreground);padding:0;width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;box-shadow:0 24px 64px rgb(0 0 0 / .28)}
+dialog[open]{animation:pop .28s var(--ease-out)}
+dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.dlg{padding:22px;display:flex;flex-direction:column;gap:16px}
+.dlg h2{margin:0;font-size:17px;font-weight:700}
+.dlg p{margin:0;color:var(--muted-fg);line-height:1.9}
+.dlg-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.dlg-acts .btn{min-width:96px}
+
+/* ---------- toast ---------- */
+#toast{position:fixed;inset-inline:16px;bottom:calc(20px + env(safe-area-inset-bottom));margin-inline:auto;width:fit-content;max-width:min(92vw,420px);z-index:99;display:flex;align-items:center;gap:10px;
+  padding:10px 16px 10px 18px;border-radius:20px;border:1px solid var(--border-strong);background:var(--glass);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:0 12px 40px rgb(0 0 0 / .18);
+  font-size:13.5px;font-weight:500;opacity:0;transform:translateY(12px) scale(.97);pointer-events:none;transition:opacity .25s var(--ease-out),transform .3s var(--ease-out)}
+#toast.show{opacity:1;transform:none}
+#toast .ti{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;flex:none;background:var(--border);color:var(--muted-fg)}
+#toast .ti svg.i{width:13px;height:13px;stroke-width:2.4}
+#toast.ok .ti{background:color-mix(in oklch,var(--success) 18%,transparent);color:var(--success-tx)}
+#toast.err .ti{background:color-mix(in oklch,var(--danger) 14%,transparent);color:var(--danger-tx)}
+
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes sheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- mobile ---------- */
+@media (max-width:979px){
+  .usage{order:5;flex-basis:100%;width:auto;margin:0}
+  .hdr-in{padding-block:8px 10px}
+  .brand{margin-inline-end:auto}
+}
+@media (max-width:640px){
+  .container{padding-inline:12px}
+  .panel{padding:16px;border-radius:22px}
+  .input{font-size:16px}
+  .input.ltr{font-size:13px}
+  .drop{padding:24px 12px}
+  .file{padding:12px}
+  .file-top{align-items:flex-start}
+  .acts .btn{flex:1 1 auto}
+  .link .btn span{display:none}
+  .link .btn{width:40px;padding:0}
+  .seg span{padding:6px 8px}
+  dialog{width:100%;max-width:none;margin:auto 0 0;border-radius:28px 28px 0 0;max-height:92dvh}
+  dialog[open]{animation:sheet .36s var(--ease-drawer)}
+  .dlg{padding:22px 20px calc(22px + env(safe-area-inset-bottom))}
+  .dlg-acts .btn{flex:1}
+  #toast{inset-inline:12px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<section id="login" hidden>
+  <div class="login-card">
+    <div class="mark" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg></div>
+    <h1>آپلودساز</h1>
+    <p>برای ورود به پنل مدیریت، مشخصات خود را وارد کنید.</p>
+    <form id="lform">
+      <div class="field"><label class="lbl" for="lu">نام کاربری</label><input class="input" id="lu" type="text" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+      <div class="field"><label class="lbl" for="lp">رمز عبور</label><input class="input" id="lp" type="password" autocomplete="current-password"></div>
+      <div class="err" id="lerr" role="alert"></div>
+      <button class="btn pri block" id="lbtn" type="submit" style="height:46px;font-size:15px">ورود</button>
+    </form>
+  </div>
+</section>
+
+<!-- App -->
+<section id="app" hidden>
+  <header class="hdr">
+    <div class="container hdr-in">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg></span>
+        آپلودساز
+      </div>
+      <div class="usage">
+        <div class="usage-row"><span>فضای مصرفی</span><span id="usage"></span></div>
+        <div class="meter" id="meter"><i></i></div>
+      </div>
+      <div class="hdr-acts">
+        <button class="icon-btn" id="theme" type="button" aria-label="تغییر تم"></button>
+        <button class="icon-btn" id="logout" type="button" aria-label="خروج"></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container grid">
+    <!-- upload -->
+    <section class="panel" aria-labelledby="upT">
+      <div class="panel-h"><h2 id="upT">آپلود فایل</h2></div>
+
+      <div class="drop" id="drop" role="button" tabindex="0" aria-label="انتخاب فایل برای آپلود">
+        <div class="tile" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg></div>
+        <div class="t">فایل‌ها را اینجا رها کنید</div>
+        <div class="s">هر تعداد و هر حجمی که فضای دیسک اجازه بدهد</div>
+        <span class="pill">انتخاب فایل</span>
+        <input type="file" id="fileInput" multiple hidden>
+      </div>
+      <div class="picked" id="picked"></div>
+
+      <div class="opts">
+        <div class="field">
+          <label class="lbl" for="pw">رمز لینک دانلود</label>
+          <input class="input" id="pw" type="password" autocomplete="new-password" placeholder="اختیاری، بدون رمز">
+        </div>
+
+        <div class="field">
+          <span class="lbl" id="expL">انقضای لینک</span>
+          <div class="seg" role="radiogroup" aria-labelledby="expL">
+            <label><input type="radio" name="exp" value="0" checked><span>بدون انقضا</span></label>
+            <label><input type="radio" name="exp" value="3600"><span>۱ ساعت</span></label>
+            <label><input type="radio" name="exp" value="86400"><span>۱ روز</span></label>
+            <label><input type="radio" name="exp" value="604800"><span>۷ روز</span></label>
+            <label><input type="radio" name="exp" value="2592000"><span>۳۰ روز</span></label>
+            <label><input type="radio" name="exp" value="custom"><span>دلخواه</span></label>
+          </div>
+          <input class="input" id="expCustom" type="datetime-local" hidden aria-label="تاریخ و ساعت انقضا">
+        </div>
+
+        <div class="opt">
+          <div class="opt-row">
+            <div><div class="opt-t">تغییر نام فایل</div><div class="opt-s">روشن: نام دلخواه شما. خاموش: نام تصادفی عددی.</div></div>
+            <label class="switch"><input type="checkbox" id="renameSw" aria-label="تغییر نام فایل"><span class="trk"></span></label>
+          </div>
+          <div class="opt-extra" id="customNameWrap" hidden>
+            <div class="field"><label class="lbl" for="customName">نام فایل</label><input class="input" id="customName" type="text" placeholder="نام دلخواه"><span class="hint">فقط برای آپلود یک فایل کاربرد دارد.</span></div>
+          </div>
+        </div>
+
+        <div class="opt">
+          <div class="opt-row">
+            <div><div class="opt-t">تبدیل به ZIP</div><div class="opt-s">فایل داخل یک بستهٔ ZIP قرار می‌گیرد.</div></div>
+            <label class="switch"><input type="checkbox" id="zip" aria-label="تبدیل به ZIP"><span class="trk"></span></label>
+          </div>
+          <div class="opt-extra" id="zipPwWrap" hidden>
+            <div class="field"><label class="lbl" for="zipPw">رمز خود فایل ZIP</label><input class="input" id="zipPw" type="password" autocomplete="new-password" placeholder="اختیاری، جدا از رمز لینک"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="start-row"><button class="btn pri" id="start" type="button" disabled>شروع آپلود</button></div>
+      <div class="queue" id="queue" aria-live="polite"></div>
+    </section>
+
+    <!-- files -->
+    <section class="panel" aria-labelledby="flT">
+      <div class="panel-h"><h2 id="flT">فایل‌ها</h2><span class="count" id="count"></span></div>
+      <div class="list" id="list"></div>
+    </section>
+  </main>
+</section>
+
+<dialog id="editDlg">
+  <div class="dlg">
+    <h2>ویرایش فایل</h2>
+    <div class="field"><label class="lbl" for="eName">نام</label><input class="input" type="text" id="eName"></div>
+    <div class="field"><label class="lbl" for="eExp">انقضا</label><input class="input" type="datetime-local" id="eExp"><span class="hint">خالی بگذارید تا لینک بدون انقضا باشد.</span></div>
+    <div class="field"><label class="lbl" for="ePw">رمز جدید</label><input class="input" type="password" id="ePw" autocomplete="new-password" placeholder="خالی = بدون تغییر"></div>
+    <div class="opt"><div class="opt-row"><div class="opt-t">حذف رمز فایل</div><label class="switch"><input type="checkbox" id="eRm" aria-label="حذف رمز فایل"><span class="trk"></span></label></div></div>
+    <div class="dlg-acts"><button class="btn" id="eCancel" type="button">انصراف</button><button class="btn pri" id="eSave" type="button">ذخیره</button></div>
+  </div>
+</dialog>
+
+<dialog id="confirmDlg">
+  <form method="dialog" class="dlg">
+    <h2 id="cTitle">تأیید</h2>
+    <p id="cMsg"></p>
+    <div class="dlg-acts"><button class="btn" value="cancel">انصراف</button><button class="btn pri" id="cOk" value="ok">تأیید</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* ---------- icons (lucide-style, inline: no external requests) ---------- */
+const P = {
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  text: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+  image: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+  film: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18M3 7.5h4M3 12h18M3 16.5h4M17 3v18M17 7.5h4M17 16.5h4"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  archive: '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  cal: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  down: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-14.93 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'
+};
+function ic(name) {
+  const t = document.createElement('template');
+  t.innerHTML = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + (P[name] || P.file) + '</svg>';
+  return t.content.firstChild;
+}
+function kindOf(n) {
+  const e = (String(n).split('.').pop() || '').toLowerCase();
+  if (/^(png|jpe?g|gif|webp|svg|avif|bmp|heic|tiff?)$/.test(e)) return 'image';
+  if (/^(mp4|mkv|mov|avi|webm|m4v|wmv)$/.test(e)) return 'film';
+  if (/^(mp3|wav|flac|m4a|ogg|aac|opus)$/.test(e)) return 'music';
+  if (/^(zip|rar|7z|tar|gz|tgz|bz2|xz)$/.test(e)) return 'archive';
+  if (/^(txt|md|pdf|docx?|xlsx?|pptx?|csv|rtf|json|log)$/.test(e)) return 'text';
+  return 'file';
+}
+
+/* ---------- formatting (Persian digits & units) ---------- */
+const faNum = (n, d = 0) => Number(n).toLocaleString('fa-IR', { maximumFractionDigits: d });
+const fmtSize = b => {
+  const u = ['بایت', 'کیلوبایت', 'مگابایت', 'گیگابایت', 'ترابایت']; let i = 0;
+  while (b >= 1024 && i < 4) { b /= 1024; i++; }
+  return faNum(b, i ? (b < 10 ? 2 : 1) : 0) + ' ' + u[i];
+};
+const fmtDate = ms => new Date(ms).toLocaleString('fa-IR', { dateStyle: 'medium', timeStyle: 'short' });
+const toLocalInput = ms => new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+function el(tag, props = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  kids.flat().filter(x => x !== null && x !== undefined && x !== false).forEach(k => e.append(k));
+  return e;
+}
+
+/* ---------- toast ---------- */
+function toast(m, type = '') {
+  const t = $('#toast');
+  t.className = type;
+  t.replaceChildren(el('span', { class: 'ti' }, ic(type === 'ok' ? 'check' : 'alert')), el('span', {}, m));
+  void t.offsetWidth;
+  t.classList.add('show');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+/* ---------- confirm dialog ---------- */
+function ask(message, okText = 'تأیید', danger = false, title = 'تأیید') {
+  return new Promise(resolve => {
+    const d = $('#confirmDlg');
+    $('#cTitle').textContent = title;
+    $('#cMsg').textContent = message;
+    const ok = $('#cOk');
+    ok.textContent = okText;
+    ok.className = 'btn ' + (danger ? 'solid-danger' : 'pri');
+    d.returnValue = '';
+    d.addEventListener('close', () => resolve(d.returnValue === 'ok'), { once: true });
+    d.showModal();
+  });
+}
+// backdrop click closes dialogs
+document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+
+/* ---------- theme ---------- */
+function paintTheme() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  $('#theme').replaceChildren(ic(dark ? 'sun' : 'moon'));
+  $('#theme').setAttribute('aria-label', dark ? 'تم روشن' : 'تم تیره');
+}
+$('#theme').onclick = () => {
+  const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = n;
+  try { localStorage.setItem('theme', n); } catch { /* private mode */ }
+  paintTheme();
+};
+$('#logout').replaceChildren(ic('out'));
+paintTheme();
+
+async function api(url, { method = 'GET', json } = {}) {
+  const r = await fetch(url, { method, credentials: 'same-origin', headers: json ? { 'Content-Type': 'application/json' } : {}, body: json ? JSON.stringify(json) : undefined });
+  if (r.status === 401 && url !== '/api/login') { showLogin(); throw new Error('نشست منقضی شد. دوباره وارد شوید.'); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'خطا ' + r.status);
+  return d;
+}
+
+/* ---------- login ---------- */
+let timer = null;
+function showLogin() { clearTimeout(timer); $('#app').hidden = true; $('#login').hidden = false; $('#lp').value = ''; }
+function showApp() { $('#login').hidden = true; $('#app').hidden = false; refresh(); }
+$('#lform').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('#lerr').textContent = '';
+  $('#lbtn').disabled = true;
+  try { await api('/api/login', { method: 'POST', json: { username: $('#lu').value, password: $('#lp').value } }); showApp(); }
+  catch (err) { $('#lerr').textContent = err.message; }
+  $('#lbtn').disabled = false;
+});
+$('#logout').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); showLogin(); };
+
+/* ---------- picking files ---------- */
+let picked = [];
+let uploading = false;
+const drop = $('#drop');
+const openPicker = () => $('#fileInput').click();
+drop.onclick = openPicker;
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPicker(); } });
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
+$('#fileInput').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+
+function addFiles(list) {
+  for (const f of list) picked.push(f);
+  renderPicked();
+}
+function renderPicked() {
+  const box = $('#picked');
+  box.replaceChildren(...picked.map((f, i) => el('div', { class: 'pick' },
+    el('div', { class: 'tile sm' }, ic(kindOf(f.name))),
+    el('div', { class: 'pick-main' }, el('div', { class: 'pick-name', title: f.name }, el('bdi', {}, f.name)), el('div', { class: 'pick-size' }, fmtSize(f.size))),
+    el('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'حذف از فهرست', onclick: () => { picked.splice(i, 1); renderPicked(); } }, ic('x')))));
+  $('#customName').disabled = picked.length > 1;
+  syncStart();
+}
+function syncStart() {
+  const b = $('#start');
+  b.disabled = uploading || !picked.length;
+  b.textContent = picked.length ? 'شروع آپلود (' + faNum(picked.length) + ' فایل)' : 'شروع آپلود';
+}
+
+$('#renameSw').onchange = () => { $('#customNameWrap').hidden = !$('#renameSw').checked; };
+$('#zip').onchange = () => { $('#zipPwWrap').hidden = !$('#zip').checked; };
+const getExpMode = () => document.querySelector('input[name=exp]:checked').value;
+document.querySelectorAll('input[name=exp]').forEach(r => r.onchange = () => { $('#expCustom').hidden = getExpMode() !== 'custom'; });
+
+function getExpiry() {
+  const v = getExpMode();
+  if (v === '0') return null;
+  if (v === 'custom') {
+    const t = new Date($('#expCustom').value).getTime();
+    if (!t || t <= Date.now()) throw new Error('تاریخ انقضا باید در آینده باشد.');
+    return t;
+  }
+  return Date.now() + Number(v) * 1000;
+}
+
+/* ---------- chunked upload (protocol unchanged) ---------- */
+function putChunk(url, blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', url);
+    x.upload.onprogress = e => e.lengthComputable && onProgress(e.loaded);
+    x.onload = () => {
+      if (x.status === 401) { showLogin(); return reject(new Error('نشست منقضی شد.')); }
+      if (x.status >= 200 && x.status < 300) return resolve();
+      let m = 'خطا ' + x.status; try { m = JSON.parse(x.responseText).error || m; } catch {}
+      const err = new Error(m); err.fatal = x.status >= 400 && x.status < 500; reject(err);
+    };
+    x.onerror = () => reject(new Error('قطع ارتباط'));
+    x.send(blob);
+  });
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function uploadOne(file, opts, onProgress) {
+  const { id, chunkSize } = await api('/api/upload/init', { method: 'POST', json: { name: file.name, size: file.size } });
+  try {
+    let done = 0;
+    for (let off = 0, i = 0; off < file.size; off += chunkSize, i++) {
+      const blob = file.slice(off, Math.min(off + chunkSize, file.size));
+      for (let attempt = 1; ; attempt++) {
+        try { await putChunk(`/api/upload/${id}/${i}`, blob, l => onProgress((done + l) / file.size)); break; }
+        catch (e) { if (e.fatal || attempt >= 5) throw e; await sleep(1000 * attempt); }
+      }
+      done += blob.size;
+      onProgress(done / file.size);
+    }
+    await api(`/api/upload/${id}/finish`, { method: 'POST', json: { name: opts.name, rename: opts.rename, zip: opts.zip, zipPassword: opts.zipPassword, password: opts.password, expiresAt: opts.expiresAt } });
+  } catch (e) {
+    fetch(`/api/upload/${id}`, { method: 'DELETE' }).catch(() => {});
+    throw e;
+  }
+}
+
+$('#start').onclick = async () => {
+  if (!picked.length) return toast('فایلی انتخاب نشده است.');
+  let opts;
+  try {
+    const renameOn = $('#renameSw').checked;
+    opts = {
+      password: $('#pw').value, zip: $('#zip').checked, zipPassword: $('#zipPw').value,
+      expiresAt: getExpiry(), rename: renameOn,
+      name: renameOn && picked.length === 1 ? $('#customName').value.trim() : ''
+    };
+  } catch (e) { return toast(e.message, 'err'); }
+
+  const files = picked.slice();
+  picked = [];
+  uploading = true;
+  renderPicked();
+  document.querySelector('#queue .q-clear')?.remove();
+
+  for (const f of files) {
+    const bar = el('i'), status = el('span', { class: 'q-st' }, '۰٪');
+    const row = el('div', { class: 'q' },
+      el('div', { class: 'q-top' }, el('span', { class: 'q-name', title: f.name }, el('bdi', {}, f.name), ' (' + fmtSize(f.size) + ')'), status),
+      el('div', { class: 'bar' }, bar));
+    $('#queue').prepend(row);
+    try {
+      await uploadOne(f, opts, p => { bar.style.width = (p * 100) + '%'; status.textContent = faNum(Math.round(p * 100)) + '٪'; });
+      bar.style.width = '100%';
+      row.classList.add('done');
+      status.className = 'q-st ok';
+      status.replaceChildren(ic('check'), 'انجام شد');
+      refresh();
+    } catch (e) {
+      row.classList.add('fail');
+      status.className = 'q-st bad';
+      status.textContent = 'ناموفق: ' + e.message;
+    }
+  }
+  $('#customName').value = '';
+  uploading = false;
+  syncStart();
+  $('#queue').append(el('button', { class: 'btn sm q-clear', type: 'button', onclick: () => $('#queue').replaceChildren() }, 'پاک‌سازی فهرست'));
+  refresh();
+};
+
+/* ---------- file list ---------- */
+const meta = (icon, text) => el('span', {}, ic(icon), text);
+
+async function refresh() {
+  clearTimeout(timer);
+  let d;
+  try { d = await api('/api/files'); } catch { return; }
+  const pct = d.quota ? Math.min(100, d.used / d.quota * 100) : 0;
+  $('#meter').firstElementChild.style.width = pct + '%';
+  $('#meter').classList.toggle('hi', pct > 90);
+  $('#usage').textContent = fmtSize(d.used) + ' از ' + fmtSize(d.quota);
+  $('#count').textContent = d.files.length ? faNum(d.files.length) + ' فایل' : '';
+
+  const list = $('#list');
+  list.replaceChildren();
+  if (!d.files.length) {
+    list.append(el('div', { class: 'empty' }, el('div', { class: 'tile' }, ic('folder')), el('div', {}, el('b', {}, 'هنوز فایلی آپلود نشده است.')), el('div', {}, 'فایل‌های آپلودشده همراه با لینک اشتراک در اینجا نمایش داده می‌شوند.')));
+  }
+  let busy = false;
+  d.files.forEach((f, idx) => {
+    if (f.status === 'processing') busy = true;
+    const full = f.link ? location.origin + f.link : '';
+    const stTag = f.status === 'ready' ? el('span', { class: 'tag ok file-st' }, ic('check'), 'آماده')
+      : f.status === 'processing' ? el('span', { class: 'tag warn file-st' }, el('i', { class: 'spin' }), 'در حال پردازش')
+      : el('span', { class: 'tag bad file-st', title: f.error || '' }, ic('alert'), 'ناموفق');
+
+    const copyBtn = el('button', { class: 'btn sm', type: 'button' }, ic('copy'), el('span', {}, 'کپی'));
+    copyBtn.onclick = async () => {
+      const ok = await copy(full);
+      if (ok) { copyBtn.replaceChildren(ic('check'), el('span', {}, 'کپی شد')); setTimeout(() => copyBtn.replaceChildren(ic('copy'), el('span', {}, 'کپی')), 1600); }
+    };
+
+    list.append(el('article', { class: 'file', style: `animation-delay:${Math.min(idx, 8) * 30}ms` },
+      el('div', { class: 'file-top' },
+        el('div', { class: 'tile' }, ic(f.zipped ? 'archive' : kindOf(f.name))),
+        el('div', { class: 'file-main' },
+          el('div', { class: 'fn' }, el('bdi', {}, f.name)),
+          el('div', { class: 'meta' },
+            meta('file', fmtSize(f.size)),
+            meta('down', faNum(f.downloads) + ' دانلود'))),
+        stTag),
+      el('div', { class: 'meta', style: 'margin-top:8px' },
+        meta('cal', 'آپلود: ' + fmtDate(f.createdAt)),
+        meta('clock', f.expiresAt ? 'انقضا: ' + fmtDate(f.expiresAt) : 'بدون انقضا')),
+      el('div', { class: 'tags' },
+        f.zipped && el('span', { class: 'tag' }, ic('archive'), f.zipEncrypted ? 'ZIP رمزدار' : 'ZIP'),
+        f.hasPassword && el('span', { class: 'tag' }, ic('lock'), 'لینک رمزدار'),
+        f.status === 'ready' && !f.link && el('span', { class: 'tag bad' }, ic('ban'), 'لینک باطل شده')),
+      f.status === 'ready' && f.link && el('div', { class: 'link' },
+        el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک دانلود', onclick: e => e.target.select() }),
+        copyBtn),
+      el('div', { class: 'acts' },
+        f.status === 'ready' && (f.link
+          ? el('button', { class: 'btn sm', type: 'button', onclick: () => act(`/api/files/${f.id}/revoke`, 'POST', 'لینک باطل شد.', { msg: 'این لینک باطل شود؟ هرکس آن را دارد دیگر نمی‌تواند دانلود کند.', ok: 'باطل کردن', title: 'باطل کردن لینک' }) }, ic('ban'), 'باطل کردن لینک')
+          : el('button', { class: 'btn sm', type: 'button', onclick: () => act(`/api/files/${f.id}/regenerate`, 'POST', 'لینک جدید ساخته شد.') }, ic('refresh'), 'ساخت لینک جدید')),
+        f.status === 'ready' && el('button', { class: 'btn sm', type: 'button', onclick: () => edit(f) }, ic('pencil'), 'ویرایش'),
+        el('button', { class: 'btn sm danger', type: 'button', onclick: () => act(`/api/files/${f.id}`, 'DELETE', 'فایل حذف شد.', { msg: 'فایل برای همیشه حذف شود؟ این کار قابل بازگشت نیست.', ok: 'حذف', title: 'حذف فایل', danger: true }) }, ic('trash'), 'حذف'))));
+  });
+  if (busy) timer = setTimeout(refresh, 2000);
+}
+async function copy(t) {
+  try { await navigator.clipboard.writeText(t); toast('لینک کپی شد.', 'ok'); return true; }
+  catch { prompt('لینک را کپی کنید:', t); return false; }
+}
+async function act(url, method, okMsg, confirm) {
+  if (confirm && !(await ask(confirm.msg, confirm.ok, !!confirm.danger, confirm.title))) return;
+  try { await api(url, { method }); toast(okMsg, 'ok'); } catch (e) { toast(e.message, 'err'); }
+  refresh();
+}
+
+/* ---------- edit dialog ---------- */
+let editing = null;
+function edit(f) {
+  editing = f;
+  $('#eName').value = f.name;
+  $('#eExp').value = f.expiresAt ? toLocalInput(f.expiresAt) : '';
+  $('#ePw').value = ''; $('#ePw').disabled = false; $('#eRm').checked = false;
+  $('#editDlg').showModal();
+}
+$('#eRm').onchange = () => { $('#ePw').disabled = $('#eRm').checked; };
+$('#eCancel').onclick = () => $('#editDlg').close();
+$('#eSave').onclick = async () => {
+  const body = { name: $('#eName').value };
+  const ev = $('#eExp').value;
+  body.expiresAt = ev ? new Date(ev).getTime() : null;
+  if ($('#eRm').checked) body.removePassword = true;
+  else if ($('#ePw').value) body.password = $('#ePw').value;
+  try { await api('/api/files/' + editing.id, { method: 'PATCH', json: body }); toast('ذخیره شد.', 'ok'); $('#editDlg').close(); refresh(); }
+  catch (e) { toast(e.message, 'err'); }
+};
+
+/* ---------- boot ---------- */
+api('/api/me').then(showApp).catch(showLogin);
+</script>
+</body>
+</html>

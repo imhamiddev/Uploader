@@ -1,9 +1,8 @@
 {
   "name": "personal-uploader",
   "version": "2.0.0",
-  "description": "Personal file uploader with expiring, optionally password-protected share links — Next.js + PersianLabs/ui",
+  "description": "Personal file uploader with expiring, optionally password-protected share links \u2014 Next.js + PersianLabs/ui",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

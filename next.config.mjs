@@ -1,6 +1,5 @@
-import type { NextConfig } from "next"
-
-const nextConfig: NextConfig = {
+/** @type {import("next").NextConfig} */
+const nextConfig = {
   poweredByHeader: false,
   // archiver-zip-encrypted pulls in native-ish deps; keep them out of the bundle.
   serverExternalPackages: ["archiver", "archiver-zip-encrypted"],

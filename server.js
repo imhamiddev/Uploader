@@ -456,7 +456,7 @@ app.post('/api/texts', auth, express.json({ limit: '2mb' }), async (req, res) =>
   const blob = sealText(plain, await textKey(password, salt), id);
   await fsp.writeFile(path.join(TEXTS, id + '.enc'), blob, { mode: 0o600 });
   const rec = {
-    id, token: newLinkToken(), title: cleanName(b.title, '').slice(0, 80), salt: salt.toString('hex'),
+    id, token: newLinkToken(), title: String(b.title || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80), salt: salt.toString('hex'),
     size: blob.length, chars: [...text].length, createdAt: Date.now(), expiresAt,
     protected: !!password, burn: !!b.burn, revoked: false, views: 0
   };

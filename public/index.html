@@ -343,8 +343,16 @@ dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);b
       <div class="picked" id="picked"></div>
 
       <div class="opts">
+        <div class="opt">
+          <div class="opt-row">
+            <div><div class="opt-t">رمزگذاری سرتاسری (E2E)</div><div class="opt-s">فایل و نامش داخل همین مرورگر رمز می‌شوند و سرور هرگز چیزی از آن‌ها نمی‌بیند. کلید داخل لینک (#k=…) است. ZIP، تغییر نام و گروهی در این حالت غیرفعال است.</div></div>
+            <label class="switch"><input type="checkbox" id="e2eSw" aria-label="رمزگذاری سرتاسری"><span class="trk"></span></label>
+          </div>
+          <div class="opt-extra" id="e2eNote" hidden><span class="hint">با رمز لینک، کلید از همان رمز ساخته می‌شود و لینک بدون کلید کار می‌کند؛ بدون رمز، کلید در خود لینک است پس لینک را فقط از مسیر امن بفرستید. برای فایل‌های خیلی بزرگ، مرورگر گیرنده باید ذخیره مستقیم روی دیسک را پشتیبانی کند (Chrome/Edge).</span></div>
+        </div>
+
         <div class="field">
-          <label class="lbl" for="pw">رمز لینک دانلود</label>
+          <label class="lbl" for="pw" id="pwLbl">رمز لینک دانلود</label>
           <input class="input" id="pw" type="password" autocomplete="new-password" placeholder="اختیاری، بدون رمز">
         </div>
 
@@ -420,6 +428,12 @@ dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);b
         </div>
         <div class="opt">
           <div class="opt-row">
+            <div><div class="opt-t">رمزگذاری سرتاسری (E2E)</div><div class="opt-s">متن داخل همین مرورگر رمز می‌شود و سرور هرگز آن را نمی‌بیند. بدون رمز، کلید داخل لینک (#k=…) است.</div></div>
+            <label class="switch"><input type="checkbox" id="txE2e" aria-label="رمزگذاری سرتاسری متن"><span class="trk"></span></label>
+          </div>
+        </div>
+        <div class="opt">
+          <div class="opt-row">
             <div><div class="opt-t">یک‌بار مصرف</div><div class="opt-s">بعد از اولین نمایش، متن برای همیشه حذف می‌شود.</div></div>
             <label class="switch"><input type="checkbox" id="txBurn" aria-label="یک‌بار مصرف"><span class="trk"></span></label>
           </div>
@@ -477,6 +491,7 @@ dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);b
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="/vendor/qrcode.js"></script>
+<script src="/e2e.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 

@@ -789,6 +789,34 @@ $('#start').onclick = async () => {
   refresh();
 };
 
+/* ---------- E2E key store (this device only) ----------
+   The server never receives keys. Keys of links created here are kept in this browser's
+   localStorage so the full link (with #k=...) can be copied again later. */
+const e2eKey = (kind, id) => `e2e:${kind}:${id}`;
+function e2eLoad(kind, id) { try { return JSON.parse(localStorage.getItem(e2eKey(kind, id))); } catch { return null; } }
+function e2eSave(kind, id, v) { try { localStorage.setItem(e2eKey(kind, id), JSON.stringify(v)); } catch { /* private mode */ } }
+function e2ePrune(kind, ids) { // forget keys of items that no longer exist
+  try {
+    const live = new Set(ids.map(i => e2eKey(kind, i)));
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(`e2e:${kind}:`) && !live.has(k)) localStorage.removeItem(k);
+    }
+  } catch { /* ignore */ }
+}
+// share link as it must be given to the recipient (E2E links carry their key in the #fragment)
+function linkWithKey(kind, x) {
+  if (!x.link) return '';
+  let u = location.origin + x.link;
+  if (x.e2e) { const s = e2eLoad(kind, x.id); if (s && s.k) u += '#k=' + s.k; }
+  return u;
+}
+function needE2E() {
+  if (window.E2E && window.crypto && crypto.subtle) return true;
+  toast('رمزگذاری سرتاسری فقط روی HTTPS (یا localhost) کار می‌کند.', 'err');
+  return false;
+}
+
 /* ---------- QR code (generated locally, nothing leaves the browser) ---------- */
 function drawQr(canvas, text, target = 1024) {
   const qr = qrcode(0, 'M');
@@ -836,9 +864,12 @@ async function refresh() {
     list.append(el('div', { class: 'empty' }, el('div', { class: 'tile' }, ic('folder')), el('div', {}, el('b', {}, 'هنوز فایلی آپلود نشده است.')), el('div', {}, 'فایل‌های آپلودشده همراه با لینک اشتراک در اینجا نمایش داده می‌شوند.')));
   }
   let busy = false;
+  e2ePrune('f', d.files.map(f => f.id));
   d.files.forEach((f, idx) => {
     if (f.status === 'processing') busy = true;
-    const full = f.link ? location.origin + f.link : '';
+    const full = linkWithKey('f', f);
+    const saved = f.e2e ? e2eLoad('f', f.id) : null;
+    const shownName = f.e2e ? (saved && saved.name) || 'فایل رمزگذاری‌شده' : f.name;
     const stTag = f.status === 'ready' ? el('span', { class: 'tag ok file-st' }, ic('check'), 'آماده')
       : f.status === 'processing' ? el('span', { class: 'tag warn file-st' }, el('i', { class: 'spin' }), 'در حال پردازش')
       : el('span', { class: 'tag bad file-st', title: f.error || '' }, ic('alert'), 'ناموفق');
@@ -853,7 +884,7 @@ async function refresh() {
       el('div', { class: 'file-top' },
         el('div', { class: 'tile' }, ic(f.zipped ? 'archive' : kindOf(f.name))),
         el('div', { class: 'file-main' },
-          el('div', { class: 'fn' }, el('bdi', {}, f.name)),
+          el('div', { class: 'fn' }, el('bdi', {}, shownName)),
           el('div', { class: 'meta' },
             meta('file', fmtSize(f.size)),
             meta('down', faNum(f.downloads) + ' دانلود'))),
@@ -862,13 +893,15 @@ async function refresh() {
         meta('cal', 'آپلود: ' + fmtDate(f.createdAt)),
         meta('clock', f.expiresAt ? 'انقضا: ' + fmtDate(f.expiresAt) : 'بدون انقضا')),
       el('div', { class: 'tags' },
+        f.e2e && el('span', { class: 'tag ok' }, ic('lock'), f.e2ePw ? 'E2E با رمز' : 'E2E'),
+        f.e2e && !f.e2ePw && !(saved && saved.k) && el('span', { class: 'tag bad', title: 'کلید این لینک فقط روی دستگاهی ذخیره است که آن را ساخته' }, ic('alert'), 'کلید روی این دستگاه نیست'),
         f.bundle > 0 && el('span', { class: 'tag' }, ic('folder'), faNum(f.bundle) + ' فایل در یک لینک'),
         f.zipped && el('span', { class: 'tag' }, ic('archive'), f.zipEncrypted ? 'ZIP رمزدار' : 'ZIP'),
         f.hasPassword && el('span', { class: 'tag' }, ic('lock'), 'لینک رمزدار'),
         f.status === 'ready' && !f.link && el('span', { class: 'tag bad' }, ic('ban'), 'لینک باطل شده')),
       f.status === 'ready' && f.link && el('div', { class: 'link' },
         el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک دانلود', onclick: e => e.target.select() }),
-        copyBtn, qrBtn(full, f.name)),
+        copyBtn, qrBtn(full, shownName)),
       el('div', { class: 'acts' },
         f.status === 'ready' && (f.link
           ? el('button', { class: 'btn sm', type: 'button', onclick: () => act(`/api/files/${f.id}/revoke`, 'POST', 'لینک باطل شد.', { msg: 'این لینک باطل شود؟ هرکس آن را دارد دیگر نمی‌تواند دانلود کند.', ok: 'باطل کردن', title: 'باطل کردن لینک' }) }, ic('ban'), 'باطل کردن لینک')
@@ -940,8 +973,9 @@ async function refreshTexts() {
     list.append(el('div', { class: 'empty' }, el('div', { class: 'tile' }, ic('text')), el('div', {}, el('b', {}, 'هنوز متنی ارسال نشده است.')), el('div', {}, 'متن‌های رمزگذاری‌شده همراه با لینک اشتراک در اینجا نمایش داده می‌شوند.')));
     return;
   }
+  e2ePrune('t', d.texts.map(t => t.id));
   d.texts.forEach((t, idx) => {
-    const full = t.link ? location.origin + t.link : '';
+    const full = linkWithKey('t', t);
     const cb = el('button', { class: 'btn sm', type: 'button' }, ic('copy'), el('span', {}, 'کپی'));
     cb.onclick = async () => { if (await copy(full)) { cb.replaceChildren(ic('check'), el('span', {}, 'کپی شد')); setTimeout(() => cb.replaceChildren(ic('copy'), el('span', {}, 'کپی')), 1600); } };
     list.append(el('article', { class: 'file', style: `animation-delay:${Math.min(idx, 8) * 30}ms` },
@@ -954,7 +988,8 @@ async function refreshTexts() {
         meta('cal', 'ساخت: ' + fmtDate(t.createdAt)),
         meta('clock', t.expiresAt ? 'انقضا: ' + fmtDate(t.expiresAt) : 'بدون انقضا')),
       el('div', { class: 'tags' },
-        el('span', { class: 'tag ok' }, ic('lock'), t.protected ? 'رمزدار' : 'رمزگذاری‌شده'),
+        el('span', { class: 'tag ok' }, ic('lock'), t.e2e ? (t.protected ? 'E2E با رمز' : 'E2E') : (t.protected ? 'رمزدار' : 'رمزگذاری‌شده')),
+        t.e2e && !t.protected && !(e2eLoad('t', t.id) || {}).k && el('span', { class: 'tag bad', title: 'کلید این لینک فقط روی دستگاهی ذخیره است که آن را ساخته' }, ic('alert'), 'کلید روی این دستگاه نیست'),
         t.burn && el('span', { class: 'tag warn' }, ic('flame'), 'یک‌بار مصرف'),
         !t.link && el('span', { class: 'tag bad' }, ic('ban'), 'لینک باطل شده')),
       t.link && el('div', { class: 'link' },

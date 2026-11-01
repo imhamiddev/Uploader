@@ -192,6 +192,16 @@ async function processUpload(rec, tmpPath, entryName, zipPassword) {
 // ---- app ----------------------------------------------------------------
 const app = express();
 app.disable('x-powered-by');
+
+// Express 4 does not catch rejected promises from async handlers: one failed fs call
+// would become an unhandled rejection and could take the whole process down.
+// Wrap every async route handler so errors reach the error middleware instead.
+const wrapAsync = fn => (typeof fn === 'function' && fn.constructor.name === 'AsyncFunction'
+  ? (req, res, next) => fn(req, res, next).catch(next) : fn);
+for (const m of ['get', 'post', 'put', 'patch', 'delete']) {
+  const orig = app[m].bind(app);
+  app[m] = (...args) => (args.length > 1 ? orig(...args.map(wrapAsync)) : orig(...args));
+}
 // Only trust as many reverse-proxy hops as configured: `true` would let any client
 // spoof X-Forwarded-For and bypass the brute-force limiter.
 const TRUST_PROXY = process.env.TRUST_PROXY === undefined ? 1 : (parseInt(process.env.TRUST_PROXY, 10) || 0);

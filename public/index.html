@@ -361,13 +361,20 @@ dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);b
           <input class="input" id="expCustom" type="datetime-local" hidden aria-label="تاریخ و ساعت انقضا">
         </div>
 
+        <div class="opt" id="bundleOpt" hidden>
+          <div class="opt-row">
+            <div><div class="opt-t">یک لینک برای همه فایل‌ها</div><div class="opt-s">همهٔ فایل‌ها در یک ZIP قرار می‌گیرند و فقط یک لینک (و یک QR) ساخته می‌شود.</div></div>
+            <label class="switch"><input type="checkbox" id="bundleSw" checked aria-label="یک لینک برای همه فایل‌ها"><span class="trk"></span></label>
+          </div>
+        </div>
+
         <div class="opt">
           <div class="opt-row">
             <div><div class="opt-t">تغییر نام فایل</div><div class="opt-s">روشن: نام دلخواه شما. خاموش: نام تصادفی عددی.</div></div>
             <label class="switch"><input type="checkbox" id="renameSw" aria-label="تغییر نام فایل"><span class="trk"></span></label>
           </div>
           <div class="opt-extra" id="customNameWrap" hidden>
-            <div class="field"><label class="lbl" for="customName">نام فایل</label><input class="input" id="customName" type="text" placeholder="نام دلخواه"><span class="hint">فقط برای آپلود یک فایل کاربرد دارد.</span></div>
+            <div class="field"><label class="lbl" for="customName">نام فایل</label><input class="input" id="customName" type="text" placeholder="نام دلخواه"><span class="hint" id="nameHint">فقط برای آپلود یک فایل (یا یک لینک گروهی) کاربرد دارد.</span></div>
           </div>
         </div>
 
@@ -623,8 +630,16 @@ function renderPicked() {
     el('div', { class: 'tile sm' }, ic(kindOf(f.name))),
     el('div', { class: 'pick-main' }, el('div', { class: 'pick-name', title: f.name }, el('bdi', {}, f.name)), el('div', { class: 'pick-size' }, fmtSize(f.size))),
     el('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'حذف از فهرست', onclick: () => { picked.splice(i, 1); renderPicked(); } }, ic('x')))));
-  $('#customName').disabled = picked.length > 1;
+  syncOpts();
   syncStart();
+}
+// options that depend on how many files are picked / whether they share one link
+function syncOpts() {
+  const many = picked.length > 1, bundle = many && $('#bundleSw').checked;
+  $('#bundleOpt').hidden = !many;
+  $('#customName').disabled = many && !bundle;
+  $('#nameHint').textContent = bundle ? 'نام فایل ZIP گروهی را مشخص می‌کند؛ نام فایل‌های داخل آن همان نام اصلی‌شان می‌ماند.' : 'فقط برای آپلود یک فایل کاربرد دارد.';
+  $('#zipPwWrap').hidden = !($('#zip').checked || bundle);
 }
 function syncStart() {
   const b = $('#start');
@@ -633,7 +648,8 @@ function syncStart() {
 }
 
 $('#renameSw').onchange = () => { $('#customNameWrap').hidden = !$('#renameSw').checked; };
-$('#zip').onchange = () => { $('#zipPwWrap').hidden = !$('#zip').checked; };
+$('#zip').onchange = syncOpts;
+$('#bundleSw').onchange = syncOpts;
 const getExpMode = () => document.querySelector('input[name=exp]:checked').value;
 document.querySelectorAll('input[name=exp]').forEach(r => r.onchange = () => { $('#expCustom').hidden = getExpMode() !== 'custom'; });
 
@@ -666,7 +682,8 @@ function putChunk(url, blob, onProgress) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function uploadOne(file, opts, onProgress) {
+// uploads the bytes only (returns the upload id); cleans up after itself on failure
+async function sendChunks(file, onProgress) {
   const { id, chunkSize } = await api('/api/upload/init', { method: 'POST', json: { name: file.name, size: file.size } });
   try {
     let done = 0;
@@ -679,22 +696,47 @@ async function uploadOne(file, opts, onProgress) {
       done += blob.size;
       onProgress(done / file.size);
     }
-    await api(`/api/upload/${id}/finish`, { method: 'POST', json: { name: opts.name, rename: opts.rename, zip: opts.zip, zipPassword: opts.zipPassword, password: opts.password, expiresAt: opts.expiresAt } });
+    return id;
   } catch (e) {
     fetch(`/api/upload/${id}`, { method: 'DELETE' }).catch(() => {});
     throw e;
   }
 }
+const dropUpload = id => fetch(`/api/upload/${id}`, { method: 'DELETE' }).catch(() => {});
+
+async function uploadOne(file, opts, onProgress) {
+  const id = await sendChunks(file, onProgress);
+  try {
+    await api(`/api/upload/${id}/finish`, { method: 'POST', json: { name: opts.name, rename: opts.rename, zip: opts.zip, zipPassword: opts.zipPassword, password: opts.password, expiresAt: opts.expiresAt } });
+  } catch (e) { dropUpload(id); throw e; }
+}
+
+// several files -> one share link (the server packs them into one ZIP)
+async function uploadBundle(files, opts, onProgress) {
+  const total = files.reduce((n, f) => n + f.size, 0) || 1;
+  const ids = [];
+  let doneBytes = 0;
+  try {
+    for (const f of files) {
+      ids.push(await sendChunks(f, p => onProgress((doneBytes + p * f.size) / total)));
+      doneBytes += f.size;
+    }
+    await api('/api/bundle/finish', { method: 'POST', json: { ids, name: opts.name, rename: opts.rename, zipPassword: opts.zipPassword, password: opts.password, expiresAt: opts.expiresAt } });
+  } catch (e) { ids.forEach(dropUpload); throw e; }
+}
+
+const bundleOn = () => picked.length > 1 && $('#bundleSw').checked;
 
 $('#start').onclick = async () => {
   if (!picked.length) return toast('فایلی انتخاب نشده است.');
+  const asBundle = bundleOn();
   let opts;
   try {
     const renameOn = $('#renameSw').checked;
     opts = {
       password: $('#pw').value, zip: $('#zip').checked, zipPassword: $('#zipPw').value,
       expiresAt: getExpiry(), rename: renameOn,
-      name: renameOn && picked.length === 1 ? $('#customName').value.trim() : ''
+      name: renameOn && (picked.length === 1 || asBundle) ? $('#customName').value.trim() : ''
     };
   } catch (e) { return toast(e.message, 'err'); }
 
@@ -704,14 +746,16 @@ $('#start').onclick = async () => {
   renderPicked();
   document.querySelector('#queue .q-clear')?.remove();
 
-  for (const f of files) {
+  const jobs = asBundle ? [{ label: faNum(files.length) + ' فایل (یک لینک)', size: files.reduce((n, f) => n + f.size, 0), run: p => uploadBundle(files, opts, p) }]
+    : files.map(f => ({ label: f.name, size: f.size, run: p => uploadOne(f, opts, p) }));
+  for (const j of jobs) {
     const bar = el('i'), status = el('span', { class: 'q-st' }, '۰٪');
     const row = el('div', { class: 'q' },
-      el('div', { class: 'q-top' }, el('span', { class: 'q-name', title: f.name }, el('bdi', {}, f.name), ' (' + fmtSize(f.size) + ')'), status),
+      el('div', { class: 'q-top' }, el('span', { class: 'q-name', title: j.label }, el('bdi', {}, j.label), ' (' + fmtSize(j.size) + ')'), status),
       el('div', { class: 'bar' }, bar));
     $('#queue').prepend(row);
     try {
-      await uploadOne(f, opts, p => { bar.style.width = (p * 100) + '%'; status.textContent = faNum(Math.round(p * 100)) + '٪'; });
+      await j.run(p => { bar.style.width = (p * 100) + '%'; status.textContent = faNum(Math.round(p * 100)) + '٪'; });
       bar.style.width = '100%';
       row.classList.add('done');
       status.className = 'q-st ok';

@@ -197,6 +197,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// API responses must never be cached by browsers or intermediaries.
+app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+
 const isAdmin = req => {
   const t = readToken(cookiesOf(req).sid);
   return !!(t && t.t === 'admin' && t.u === ADMIN_USER);

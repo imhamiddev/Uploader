@@ -106,6 +106,44 @@ async function upload(size, opts) {
   assert.strictEqual(left.files.length, 0);
   assert.deepStrictEqual(fs.readdirSync(path.join(DATA, 'files')), [], 'no files left on disk');
 
+  // ---- encrypted texts ----
+  const form = { 'content-type': 'application/x-www-form-urlencoded' };
+  const secretText = 'سلام <b>x</b> & secret-marker-12345';
+  assert.strictEqual((await req('/api/texts', { method: 'POST', json: { text: '   ' } })).status, 400, 'empty text rejected');
+  assert.strictEqual((await req('/api/texts', { method: 'POST', json: { text: 'a'.repeat(1024 * 1024 + 1) } })).status, 413, 'oversize text rejected');
+  const ct = await (await req('/api/texts', { method: 'POST', json: { text: secretText, title: 'Note: 1', password: 'tpw' } })).json();
+  assert.ok(ct.link && ct.link.startsWith('/t/'));
+  const enc = fs.readFileSync(path.join(DATA, 'texts', ct.id + '.enc'));
+  assert.ok(!enc.includes('secret-marker-12345'), 'ciphertext on disk must not contain plaintext');
+  assert.ok(!fs.readFileSync(path.join(DATA, 'db.json'), 'utf8').includes('secret-marker'), 'db must not contain plaintext');
+  const anon = cookie; cookie = '';
+  const gate = await req(ct.link);
+  assert.strictEqual(gate.status, 200);
+  assert.ok(!(await gate.text()).includes('secret-marker'), 'gate page must not show the text');
+  assert.strictEqual((await req(ct.link, { method: 'POST', body: 'password=wrong', headers: form })).status, 401, 'wrong text password');
+  const shown = await req(ct.link, { method: 'POST', body: 'password=tpw', headers: form });
+  assert.strictEqual(shown.status, 200);
+  const html = await shown.text();
+  assert.ok(html.includes('secret-marker-12345') && html.includes('&lt;b&gt;x&lt;/b&gt;'), 'text shown and HTML-escaped');
+  assert.strictEqual(shown.headers.get('cache-control'), 'private, no-store');
+
+  // one-time text: GET (crawler) must not burn it; first POST shows it, second is gone
+  cookie = anon;
+  const once = await (await req('/api/texts', { method: 'POST', json: { text: 'burn me', burn: true } })).json();
+  cookie = '';
+  await req(once.link); await req(once.link);
+  assert.strictEqual((await req(once.link, { method: 'POST', body: '', headers: form })).status, 200, 'first read works');
+  assert.strictEqual((await req(once.link, { method: 'POST', body: '', headers: form })).status, 404, 'second read is gone');
+  await sleep(200);
+  cookie = anon;
+  const tl = await (await req('/api/texts')).json();
+  assert.strictEqual(tl.texts.length, 1, 'burned text removed from list');
+  assert.ok(tl.texts[0].protected && tl.texts[0].views === 1);
+  assert.strictEqual((await req(`/api/texts/${ct.id}/revoke`, { method: 'POST' })).status, 200);
+  assert.strictEqual((await fetch(BASE + ct.link)).status, 404, 'revoked text link is dead');
+  assert.strictEqual((await req(`/api/texts/${ct.id}`, { method: 'DELETE' })).status, 200);
+  assert.deepStrictEqual(fs.readdirSync(path.join(DATA, 'texts')), [], 'no ciphertext left on disk');
+
   console.log('all smoke tests passed');
 })().then(() => cleanup(0)).catch(e => { console.error(e); cleanup(1); });
 

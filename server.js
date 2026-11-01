@@ -38,12 +38,14 @@ const CHUNK = 5 * 1024 * 1024; // 5 MB per request: safe for proxy / timeout lim
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const FILES = path.join(DATA, 'files');
 const TMP = path.join(DATA, 'tmp');
+const TEXTS = path.join(DATA, 'texts'); // encrypted text blobs (<id>.enc)
 const DBF = path.join(DATA, 'db.json');
 fs.mkdirSync(FILES, { recursive: true });
 fs.mkdirSync(TMP, { recursive: true });
+fs.mkdirSync(TEXTS, { recursive: true });
 
 // ---- tiny JSON database ---------------------------------------------
-let db = { files: {}, uploads: {} };
+let db = { files: {}, uploads: {}, texts: {} };
 try { db = Object.assign(db, JSON.parse(fs.readFileSync(DBF, 'utf8'))); } catch (e) {
   if (e.code !== 'ENOENT') { // corrupted db.json: keep a copy instead of silently overwriting it
     try { fs.copyFileSync(DBF, DBF + '.corrupt-' + Date.now()); } catch { /* ignore */ }
@@ -52,6 +54,7 @@ try { db = Object.assign(db, JSON.parse(fs.readFileSync(DBF, 'utf8'))); } catch 
 }
 if (!db.files || typeof db.files !== 'object') db.files = {};
 if (!db.uploads || typeof db.uploads !== 'object') db.uploads = {};
+if (!db.texts || typeof db.texts !== 'object') db.texts = {};
 const finishing = new Set(); // upload ids currently being finalized (not persisted)
 let saving = Promise.resolve();
 function save() {
@@ -136,6 +139,7 @@ function usedBytes() {
   let n = 0;
   for (const r of Object.values(db.files)) n += r.size || 0;
   for (const u of Object.values(db.uploads)) n += u.size || 0;
+  for (const t of Object.values(db.texts)) n += t.size || 0;
   return n;
 }
 

@@ -52,6 +52,7 @@ try { db = Object.assign(db, JSON.parse(fs.readFileSync(DBF, 'utf8'))); } catch 
 }
 if (!db.files || typeof db.files !== 'object') db.files = {};
 if (!db.uploads || typeof db.uploads !== 'object') db.uploads = {};
+const finishing = new Set(); // upload ids currently being finalized (not persisted)
 let saving = Promise.resolve();
 function save() {
   saving = saving.then(async () => {
@@ -266,7 +267,7 @@ app.post('/api/upload/init', auth, express.json({ limit: '10kb' }), async (req, 
 
 app.put('/api/upload/:id/:index', auth, express.raw({ type: () => true, limit: CHUNK + 1024 }), async (req, res) => {
   const u = db.uploads[req.params.id];
-  if (!u || u.finishing || !/^\d{1,9}$/.test(req.params.index)) return res.status(404).json({ error: 'آپلود پیدا نشد.' });
+  if (!u || finishing.has(u.id) || !/^\d{1,9}$/.test(req.params.index)) return res.status(404).json({ error: 'آپلود پیدا نشد.' });
   const index = parseInt(req.params.index, 10);
   const body = req.body;
   if (!Buffer.isBuffer(body)) return res.status(400).json({ error: 'bad body' });
@@ -286,10 +287,8 @@ app.put('/api/upload/:id/:index', auth, express.raw({ type: () => true, limit: C
 
 app.post('/api/upload/:id/finish', auth, express.json({ limit: '10kb' }), async (req, res) => {
   const u = db.uploads[req.params.id];
-  if (!u) return res.status(404).json({ error: 'آپلود پیدا نشد.' });
+  if (!u || finishing.has(u.id)) return res.status(404).json({ error: 'آپلود پیدا نشد.' });
   const tmpPath = path.join(TMP, u.id + '.part');
-  const st = await fsp.stat(tmpPath).catch(() => null);
-  if (!st || st.size !== u.size) return res.status(400).json({ error: 'فایل ناقص دریافت شد.' });
 
   const b = req.body || {};
   let expiresAt = null;
@@ -311,14 +310,24 @@ app.post('/api/upload/:id/finish', auth, express.json({ limit: '10kb' }), async 
   const linkPassword = b.password ? String(b.password) : '';
   const zipPassword = zipped && b.zipPassword ? String(b.zipPassword) : '';
 
+  const pwHash = linkPassword ? await hashPw(linkPassword) : null;
+
+  // Claim the upload before the next await: a double "finish" (retry / double click)
+  // must not create two records that share one temp file.
+  if (finishing.has(u.id) || db.uploads[u.id] !== u) return res.status(409).json({ error: 'این آپلود در حال تکمیل است.' });
+  finishing.add(u.id);
+  const st = await fsp.stat(tmpPath).catch(() => null);
+  if (!st || st.size !== u.size) { finishing.delete(u.id); return res.status(400).json({ error: 'فایل ناقص دریافت شد.' }); }
+
   const rec = {
     id: u.id, token: newLinkToken(), name: downloadName, originalName: entryName,
     size: u.size, createdAt: Date.now(), expiresAt,
-    pw: linkPassword ? await hashPw(linkPassword) : null,
+    pw: pwHash,
     zipped, zipEncrypted: !!zipPassword, status: 'processing', revoked: false, downloads: 0, file: null
   };
   db.files[rec.id] = rec;
   delete db.uploads[u.id];
+  finishing.delete(u.id);
   await save();
   res.json({ ok: true, id: rec.id });
   processUpload(rec, tmpPath, entryName, zipPassword); // async; UI polls status
@@ -326,7 +335,7 @@ app.post('/api/upload/:id/finish', auth, express.json({ limit: '10kb' }), async 
 
 app.delete('/api/upload/:id', auth, async (req, res) => {
   const u = db.uploads[req.params.id];
-  if (u) { delete db.uploads[u.id]; await unlinkQuiet(path.join(TMP, u.id + '.part')); save(); }
+  if (u && !finishing.has(u.id)) { delete db.uploads[u.id]; await unlinkQuiet(path.join(TMP, u.id + '.part')); save(); }
   res.json({ ok: true });
 });
 
@@ -516,7 +525,7 @@ async function cleanup() {
     if (isExpired(r) && r.status !== 'processing') await deleteRecord(r);
   }
   for (const u of Object.values(db.uploads)) {
-    if (Date.now() - u.last > 24 * 3600 * 1000) {
+    if (!finishing.has(u.id) && Date.now() - u.last > 24 * 3600 * 1000) {
       delete db.uploads[u.id];
       await unlinkQuiet(path.join(TMP, u.id + '.part'));
       save();

@@ -107,6 +107,30 @@ async function checkPw(pw, stored) {
   const x = await scrypt(pwBytes(pw), Buffer.from(s, 'hex'), expected.length || 32);
   return x.length === expected.length && crypto.timingSafeEqual(x, expected);
 }
+// ---- encrypted texts ------------------------------------------------------
+// Every text is sealed with AES-256-GCM. With a password the key is derived from it
+// (scrypt), so the server cannot read the text without that password. Without one the
+// key is derived from the server secret, which still protects the data at rest.
+const MAX_TEXT = 1024 * 1024; // 1 MB of UTF-8 per text
+const SCRYPT_OPTS = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+async function textKey(password, salt) {
+  if (password) return scrypt(Buffer.from(pwBytes(password), 'utf8'), salt, 32, SCRYPT_OPTS);
+  return Buffer.from(crypto.hkdfSync('sha256', SECRET, salt, 'uploader-text-v1', 32));
+}
+function sealText(plain, key, id) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+  c.setAAD(Buffer.from(id)); // binds the ciphertext to its record
+  const ct = Buffer.concat([c.update(plain), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), ct]);
+}
+function openText(blob, key, id) { // throws if the key is wrong or the data was tampered with
+  const d = crypto.createDecipheriv('aes-256-gcm', key, blob.subarray(0, 12));
+  d.setAAD(Buffer.from(id));
+  d.setAuthTag(blob.subarray(12, 28));
+  return Buffer.concat([d.update(blob.subarray(28)), d.final()]);
+}
+
 function cleanName(n, fallback) {
   n = String(n || '').replace(/[\\/\0\r\n:*?"<>|]/g, '_').replace(/^\.+/, '').trim().slice(0, 200);
   return n || fallback;

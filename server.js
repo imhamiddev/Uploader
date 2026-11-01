@@ -175,7 +175,10 @@ async function processUpload(rec, tmpPath, entryName, zipPassword) {
 // ---- app ----------------------------------------------------------------
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', true);
+// Only trust as many reverse-proxy hops as configured: `true` would let any client
+// spoof X-Forwarded-For and bypass the brute-force limiter.
+const TRUST_PROXY = process.env.TRUST_PROXY === undefined ? 1 : (parseInt(process.env.TRUST_PROXY, 10) || 0);
+app.set('trust proxy', TRUST_PROXY);
 app.use((req, res, next) => {
   res.set({
     'X-Content-Type-Options': 'nosniff',

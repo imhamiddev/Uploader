@@ -847,6 +847,7 @@ async function refresh() {
         meta('cal', 'آپلود: ' + fmtDate(f.createdAt)),
         meta('clock', f.expiresAt ? 'انقضا: ' + fmtDate(f.expiresAt) : 'بدون انقضا')),
       el('div', { class: 'tags' },
+        f.bundle > 0 && el('span', { class: 'tag' }, ic('folder'), faNum(f.bundle) + ' فایل در یک لینک'),
         f.zipped && el('span', { class: 'tag' }, ic('archive'), f.zipEncrypted ? 'ZIP رمزدار' : 'ZIP'),
         f.hasPassword && el('span', { class: 'tag' }, ic('lock'), 'لینک رمزدار'),
         f.status === 'ready' && !f.link && el('span', { class: 'tag bad' }, ic('ban'), 'لینک باطل شده')),

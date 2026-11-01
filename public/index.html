@@ -650,9 +650,16 @@ function renderPicked() {
 }
 // options that depend on how many files are picked / whether they share one link
 function syncOpts() {
-  const many = picked.length > 1, bundle = many && $('#bundleSw').checked;
-  $('#bundleOpt').hidden = !many;
-  $('#customName').disabled = many && !bundle;
+  const e2e = $('#e2eSw').checked;
+  const many = picked.length > 1, bundle = !e2e && many && $('#bundleSw').checked;
+  // E2E means the server cannot touch the bytes, so server-side zip / rename / grouping are off
+  $('#e2eNote').hidden = !e2e;
+  $('#pwLbl').textContent = e2e ? 'رمز E2E (کلید از آن ساخته می‌شود)' : 'رمز لینک دانلود';
+  $('#pw').placeholder = e2e ? 'اختیاری؛ بدون رمز، کلید داخل لینک است' : 'اختیاری، بدون رمز';
+  for (const id of ['#zip', '#renameSw', '#bundleSw']) { $(id).disabled = e2e; if (e2e && id !== '#bundleSw') $(id).checked = false; }
+  if (e2e) $('#customNameWrap').hidden = true;
+  $('#bundleOpt').hidden = !many || e2e;
+  $('#customName').disabled = e2e || (many && !bundle);
   $('#nameHint').textContent = bundle ? 'نام فایل ZIP گروهی را مشخص می‌کند؛ نام فایل‌های داخل آن همان نام اصلی‌شان می‌ماند.' : 'فقط برای آپلود یک فایل کاربرد دارد.';
   $('#zipPwWrap').hidden = !($('#zip').checked || bundle);
 }
@@ -663,6 +670,7 @@ function syncStart() {
 }
 
 $('#renameSw').onchange = () => { $('#customNameWrap').hidden = !$('#renameSw').checked; };
+$('#e2eSw').onchange = syncOpts;
 $('#zip').onchange = syncOpts;
 $('#bundleSw').onchange = syncOpts;
 const getExpMode = () => document.querySelector('input[name=exp]:checked').value;
@@ -740,11 +748,36 @@ async function uploadBundle(files, opts, onProgress) {
   } catch (e) { ids.forEach(dropUpload); throw e; }
 }
 
-const bundleOn = () => picked.length > 1 && $('#bundleSw').checked;
+// End-to-end: encrypt in the browser, upload only ciphertext, keep the key out of the server
+async function uploadE2E(file, opts, onProgress) {
+  const pk = opts.password ? await E2E.keyFromPassword(opts.password) : null; // password -> key (+ salt, verifier)
+  const k = pk || await E2E.newKey();                                        // otherwise a random key for the link fragment
+  const metaStr = await E2E.sealMeta(k.key, { name: file.name, type: file.type || '', size: file.size });
+  const total = E2E.cipherSize(file.size);
+  const { id, chunkSize } = await api('/api/upload/init', { method: 'POST', json: { name: 'encrypted.bin', size: total } });
+  try {
+    let i = 0, done = 0;
+    for await (const chunk of E2E.encryptChunks(k.key, file, chunkSize)) {
+      const blob = new Blob([chunk]);
+      for (let attempt = 1; ; attempt++) {
+        try { await putChunk(`/api/upload/${id}/${i}`, blob, l => onProgress((done + l) / total)); break; }
+        catch (e) { if (e.fatal || attempt >= 5) throw e; await sleep(1000 * attempt); }
+      }
+      done += blob.size; i++;
+      onProgress(done / total);
+    }
+    await api(`/api/upload/${id}/finish`, { method: 'POST', json: { expiresAt: opts.expiresAt, e2e: { meta: metaStr, salt: pk ? pk.salt : undefined, vfy: pk ? pk.vfy : undefined } } });
+  } catch (e) { dropUpload(id); throw e; }
+  e2eSave('f', id, { k: pk ? null : k.raw, name: file.name });
+}
+
+const bundleOn = () => picked.length > 1 && !$('#e2eSw').checked && $('#bundleSw').checked;
 
 $('#start').onclick = async () => {
   if (!picked.length) return toast('فایلی انتخاب نشده است.');
   const asBundle = bundleOn();
+  const e2e = $('#e2eSw').checked;
+  if (e2e && !needE2E()) return;
   let opts;
   try {
     const renameOn = $('#renameSw').checked;
@@ -762,7 +795,7 @@ $('#start').onclick = async () => {
   document.querySelector('#queue .q-clear')?.remove();
 
   const jobs = asBundle ? [{ label: faNum(files.length) + ' فایل (یک لینک)', size: files.reduce((n, f) => n + f.size, 0), run: p => uploadBundle(files, opts, p) }]
-    : files.map(f => ({ label: f.name, size: f.size, run: p => uploadOne(f, opts, p) }));
+    : files.map(f => ({ label: f.name, size: f.size, run: p => (e2e ? uploadE2E(f, opts, p) : uploadOne(f, opts, p)) }));
   for (const j of jobs) {
     const bar = el('i'), status = el('span', { class: 'q-st' }, '۰٪');
     const row = el('div', { class: 'q' },

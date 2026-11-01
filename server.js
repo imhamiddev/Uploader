@@ -619,6 +619,73 @@ app.get('/d/:token/file', (req, res) => {
   });
 });
 
+// ---- public text pages --------------------------------------------------------
+// Opening the link only shows a gate; the text is revealed by a POST. That way link
+// previews / crawlers (which only GET) can never read or burn a one-time text.
+function liveText(token) {
+  if (!token) return null;
+  for (const t of Object.values(db.texts)) {
+    if (t.token && t.token === token && !t.revoked && !t.consumed) {
+      if (isExpired(t)) { deleteText(t); return null; }
+      return t;
+    }
+  }
+  return null;
+}
+function textGate(t, token, error) {
+  const chips = `<span class="chip">${svg('text')}${faNum(t.chars)} نویسه</span>`
+    + (t.expiresAt ? `<span class="chip">${svg('clock')}${esc(new Date(t.expiresAt).toLocaleString('fa-IR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tehran' }))}</span>` : '')
+    + (t.protected ? `<span class="chip">${svg('lock')}رمزدار</span>` : '')
+    + (t.burn ? `<span class="chip">${svg('flame')}یک‌بار مصرف</span>` : '');
+  const head = `<div class="tile g">${svg('text')}</div><h1><bdi>${esc(t.title || 'متن امن')}</bdi></h1><div class="chips">${chips}</div>`;
+  const warn = t.burn ? '<p class="warn">این متن بعد از نمایش برای همیشه حذف می‌شود.</p>' : '';
+  const body = `${head}${warn}<form method="post" action="/t/${esc(token)}">`
+    + (t.protected ? '<input type="password" name="password" placeholder="رمز عبور متن" autocomplete="off" autofocus required>' : '')
+    + `<div class="e" role="alert">${error ? esc(error) : ''}</div><button class="b" type="submit">${svg('eye')}نمایش متن</button></form>`;
+  return page(t.title || 'متن امن', body, error ? 401 : 200, true);
+}
+function textView(t, text) {
+  const body = `<div class="tile g">${svg('text')}</div><h1><bdi>${esc(t.title || 'متن امن')}</bdi></h1>`
+    + `<pre class="txt" id="tx" dir="auto">${esc(text)}</pre>`
+    + (t.burn ? '<p class="warn">این متن حذف شد و دیگر قابل دسترسی نیست. همین حالا آن را کپی کنید.</p>' : '')
+    + `<button class="b" type="button" id="cp">${svg('text')}کپی متن</button>`
+    + `<script>document.getElementById('cp').onclick=function(){var b=this,t=document.getElementById('tx').textContent;`
+    + `(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){b.lastChild.textContent='کپی شد'},function(){`
+    + `var r=document.createRange();r.selectNodeContents(document.getElementById('tx'));var s=getSelection();s.removeAllRanges();s.addRange(r)})}</script>`;
+  return page(t.title || 'متن امن', body, 200, true);
+}
+
+app.get('/t/:token', (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  const t = liveText(req.params.token);
+  send(res, t ? textGate(t, req.params.token) : notFound());
+});
+
+app.post('/t/:token', express.urlencoded({ extended: false, limit: '10kb' }), async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  const token = req.params.token;
+  const t = liveText(token);
+  if (!t) return send(res, notFound());
+  const key = 'tx:' + token + ':' + req.ip;
+  if (limited(key)) return send(res, page('محدودیت', '<h1>تلاش‌های زیاد</h1><p class="m">چند دقیقه بعد دوباره امتحان کنید.</p>', 429));
+  let plain;
+  try {
+    const blob = await fsp.readFile(path.join(TEXTS, t.id + '.enc'));
+    plain = openText(blob, await textKey(t.protected ? (req.body || {}).password || '' : '', Buffer.from(t.salt, 'hex')), t.id);
+  } catch (e) {
+    if (t.protected && e.code !== 'ENOENT') { addFail(key); return send(res, textGate(t, token, 'رمز اشتباه است.')); }
+    return send(res, notFound());
+  }
+  if (t.burn) { // claim synchronously so two simultaneous requests cannot both read it
+    if (t.consumed) return send(res, notFound());
+    t.consumed = true;
+  }
+  fails.delete(key);
+  t.views++;
+  send(res, textView(t, plain.toString('utf8')));
+  if (t.burn) await deleteText(t); else save();
+});
+
 // ---- admin UI -----------------------------------------------------------------
 app.use('/fonts', express.static(path.join(__dirname, 'public', 'fonts'), { maxAge: '30d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', maxAge: 0 }));

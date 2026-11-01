@@ -527,7 +527,9 @@ async function cleanup() {
   // drop stale rate-limiter entries so the map cannot grow without bound
   for (const [k, f] of fails) if (Date.now() - f.t > 15 * 60 * 1000 && (!f.until || f.until <= Date.now())) fails.delete(k);
   for (const r of Object.values(db.files)) {
-    if (isExpired(r) && r.status !== 'processing') await deleteRecord(r);
+    if (r.status === 'processing') continue;
+    // failed records hold no usable file; drop them after a day so they stop counting against the quota
+    if (isExpired(r) || (r.status === 'failed' && Date.now() - r.createdAt > 24 * 3600 * 1000)) await deleteRecord(r);
   }
   for (const u of Object.values(db.uploads)) {
     if (!finishing.has(u.id) && Date.now() - u.last > 24 * 3600 * 1000) {

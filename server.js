@@ -266,12 +266,15 @@ app.post('/api/upload/init', auth, express.json({ limit: '10kb' }), async (req, 
 
 app.put('/api/upload/:id/:index', auth, express.raw({ type: () => true, limit: CHUNK + 1024 }), async (req, res) => {
   const u = db.uploads[req.params.id];
+  if (!u || u.finishing || !/^\d{1,9}$/.test(req.params.index)) return res.status(404).json({ error: 'آپلود پیدا نشد.' });
   const index = parseInt(req.params.index, 10);
-  if (!u || !(index >= 0)) return res.status(404).json({ error: 'آپلود پیدا نشد.' });
   const body = req.body;
   if (!Buffer.isBuffer(body)) return res.status(400).json({ error: 'bad body' });
   const offset = index * CHUNK;
-  if (offset + body.length > u.size) return res.status(400).json({ error: 'خارج از محدوده حجم' });
+  // every chunk is exactly CHUNK bytes except the last one, which holds the remainder
+  if (offset >= u.size || body.length !== Math.min(CHUNK, u.size - offset)) {
+    return res.status(400).json({ error: 'اندازهٔ تکه نامعتبر است.' });
+  }
   let fh;
   try {
     fh = await fsp.open(path.join(TMP, u.id + '.part'), 'r+');

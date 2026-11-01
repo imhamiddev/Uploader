@@ -532,6 +532,11 @@ input:focus{border-color:color-mix(in oklch,var(--foreground) 40%,transparent);b
   font:inherit;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer;transition:opacity .15s var(--ease-out),transform .15s var(--ease-out)}
 .b:hover{opacity:.88}.b:active{transform:scale(.98)}
 form .b{margin-top:0}
+pre.txt{margin:18px 0 0;padding:16px 18px;max-height:60vh;overflow:auto;text-align:start;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--border-strong);border-radius:20px;background:var(--background);
+  font:inherit;font-size:14px;line-height:1.9;user-select:text}
+.b.alt{background:transparent;color:var(--foreground);border:1px solid var(--border-strong)}
+.b.alt:hover{background:var(--border);opacity:1}
+.warn{margin:14px 0 0;color:var(--danger-tx);font-size:12.5px}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (max-width:640px){input{font-size:16px}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}`;

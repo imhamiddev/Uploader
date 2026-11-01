@@ -177,6 +177,10 @@ main.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding-bloc
 .switch input:checked:active+.trk::before{transform:translateX(-24px)}
 .switch input:focus-visible+.trk{outline:2px solid var(--primary);outline-offset:2px}
 
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.area{height:auto;min-height:150px;padding:14px 18px;border-radius:22px;resize:vertical;line-height:1.8;font-family:var(--font)}
+.pwrow{display:flex;gap:8px}
+.pwrow .btn{height:44px;flex:none}
 .start-row{display:flex;align-items:center;gap:12px;margin-top:20px}
 .start-row .btn{height:46px;flex:1;font-size:15px}
 
@@ -322,6 +326,7 @@ dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);b
   </header>
 
   <main class="container grid">
+    <div class="col">
     <!-- upload -->
     <section class="panel" aria-labelledby="upT">
       <div class="panel-h"><h2 id="upT">آپلود فایل</h2></div>
@@ -379,11 +384,56 @@ dialog::backdrop{background:rgb(0 0 0 / .45);-webkit-backdrop-filter:blur(3px);b
       <div class="queue" id="queue" aria-live="polite"></div>
     </section>
 
+    <!-- secure text -->
+    <section class="panel" aria-labelledby="txT">
+      <div class="panel-h"><h2 id="txT">ارسال متن امن</h2></div>
+      <div class="opts" style="margin-top:0">
+        <div class="field"><label class="lbl" for="txTitle">عنوان</label><input class="input" id="txTitle" type="text" maxlength="80" placeholder="اختیاری"></div>
+        <div class="field">
+          <label class="lbl" for="txBody">متن</label>
+          <textarea class="input area" id="txBody" rows="8" dir="auto" placeholder="متن خود را بنویسید یا جای‌گذاری کنید (تا ۱ مگابایت)"></textarea>
+          <span class="hint" id="txCount"></span>
+        </div>
+        <div class="field">
+          <label class="lbl" for="txPw">رمز متن</label>
+          <div class="pwrow"><input class="input" id="txPw" type="password" autocomplete="new-password" placeholder="پیشنهاد می‌شود حتماً رمز بگذارید"><button class="btn" id="txGen" type="button">تولید رمز</button></div>
+          <span class="hint">با رمز، متن با کلیدی که از همان رمز ساخته می‌شود رمزگذاری می‌شود و بدون آن حتی روی سرور هم قابل خواندن نیست. رمز را از راهی جدا از لینک بفرستید.</span>
+        </div>
+        <div class="field">
+          <span class="lbl" id="txExpL">انقضای لینک</span>
+          <div class="seg" role="radiogroup" aria-labelledby="txExpL">
+            <label><input type="radio" name="txexp" value="0"><span>بدون انقضا</span></label>
+            <label><input type="radio" name="txexp" value="3600"><span>۱ ساعت</span></label>
+            <label><input type="radio" name="txexp" value="86400" checked><span>۱ روز</span></label>
+            <label><input type="radio" name="txexp" value="604800"><span>۷ روز</span></label>
+            <label><input type="radio" name="txexp" value="2592000"><span>۳۰ روز</span></label>
+          </div>
+        </div>
+        <div class="opt">
+          <div class="opt-row">
+            <div><div class="opt-t">یک‌بار مصرف</div><div class="opt-s">بعد از اولین نمایش، متن برای همیشه حذف می‌شود.</div></div>
+            <label class="switch"><input type="checkbox" id="txBurn" aria-label="یک‌بار مصرف"><span class="trk"></span></label>
+          </div>
+        </div>
+      </div>
+      <div class="start-row"><button class="btn pri" id="txSend" type="button">ساخت لینک امن</button></div>
+      <div class="queue" id="txResult" aria-live="polite"></div>
+    </section>
+    </div>
+
+    <div class="col">
     <!-- files -->
     <section class="panel" aria-labelledby="flT">
       <div class="panel-h"><h2 id="flT">فایل‌ها</h2><span class="count" id="count"></span></div>
       <div class="list" id="list"></div>
     </section>
+
+    <!-- texts -->
+    <section class="panel" aria-labelledby="tlT">
+      <div class="panel-h"><h2 id="tlT">متن‌ها</h2><span class="count" id="txTotal"></span></div>
+      <div class="list" id="tlist"></div>
+    </section>
+    </div>
   </main>
 </section>
 

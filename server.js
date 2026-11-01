@@ -693,7 +693,7 @@ function e2eLanding(kind, rec, token) {
   const attrs = `data-kind="${kind}" data-token="${esc(token)}" data-meta="${esc(rec.e2eMeta || '')}" data-salt="${esc(rec.e2eSalt || '')}" `
     + `data-vfy="${esc(rec.e2eVfy || '')}" data-size="${Number(rec.size) | 0}" data-burn="${rec.burn ? 1 : 0}"`;
   const chips = `<span class="chip">${svg('lock')}رمزگذاری سرتاسری</span>`
-    + (isFile ? `<span class="chip" id="e2eSize">${svg('file')}${fmtSize(Math.max(0, rec.size - 24))}</span>` : '')
+    + (isFile ? `<span class="chip" id="e2eSize">${svg('file')}${fmtSize(Math.max(0, rec.size - 8 - 16 * Math.max(1, Math.ceil((rec.size - 8) / (1048576 + 16)))))}</span>` : '')
     + (rec.expiresAt ? `<span class="chip">${svg('clock')}${esc(new Date(rec.expiresAt).toLocaleString('fa-IR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tehran' }))}</span>` : '')
     + (rec.burn ? `<span class="chip">${svg('flame')}یک‌بار مصرف</span>` : '');
   const title = isFile ? 'فایل رمزگذاری‌شده' : (rec.title || 'متن رمزگذاری‌شده');

@@ -548,4 +548,20 @@ setInterval(() => cleanup().catch(console.error), 60 * 1000).unref();
 cleanup().catch(console.error);
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log('Uploader listening on', port));
+const server = app.listen(port, () => console.log('Uploader listening on', port));
+// large downloads and slow 5 MB chunks must not be cut off by Node's default timeouts
+server.requestTimeout = 15 * 60 * 1000;
+server.keepAliveTimeout = 65 * 1000;
+
+// flush the database before exiting so a restart never loses the latest changes
+let closing = false;
+async function shutdown(sig) {
+  if (closing) return;
+  closing = true;
+  console.log(sig + ' received, shutting down');
+  server.close();
+  try { await save(); } catch { /* logged by save() */ }
+  process.exit(0);
+}
+for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => shutdown(s));
+process.on('unhandledRejection', e => console.error('unhandled rejection', e));

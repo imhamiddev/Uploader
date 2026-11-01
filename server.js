@@ -534,26 +534,43 @@ app.delete('/api/files/:id', auth, async (req, res) => {
 // ---- texts (admin) -----------------------------------------------------------
 app.post('/api/texts', auth, express.json({ limit: '2mb' }), async (req, res) => {
   const b = req.body || {};
-  const text = typeof b.text === 'string' ? b.text : '';
-  if (!text.trim()) return res.status(400).json({ error: 'متن خالی است.' });
-  const plain = Buffer.from(text, 'utf8');
-  if (plain.length > MAX_TEXT) return res.status(413).json({ error: 'متن بیشتر از ۱ مگابایت است.' });
+  // End-to-end mode: `payload` is already ciphertext made in the browser. The server cannot read it;
+  // it is still sealed at rest with the server key (defence in depth) and handed back verbatim.
+  const e2e = b.e2e === true;
+  let text = '', plain, e2eSalt = null, e2eVfy = null, e2eChars = 0;
+  if (e2e) {
+    if (!b64uOk(b.payload, 1600000) || !b64uOk(b.meta, 4096)) return res.status(400).json({ error: 'داده رمزگذاری‌شده نامعتبر است.' });
+    if (b.salt || b.vfy) {
+      if (!b64uOk(b.salt, 100) || !b64uOk(b.vfy, 100)) return res.status(400).json({ error: 'اطلاعات رمز نامعتبر است.' });
+      e2eSalt = b.salt; e2eVfy = b.vfy;
+    }
+    plain = Buffer.from(b.payload, 'base64url');
+    if (plain.length < 28) return res.status(400).json({ error: 'داده رمزگذاری‌شده نامعتبر است.' });
+    if (plain.length > MAX_TEXT + 64) return res.status(413).json({ error: 'متن بیشتر از ۱ مگابایت است.' });
+    e2eChars = Math.min(Math.max(parseInt(b.chars, 10) || 0, 0), MAX_TEXT);
+  } else {
+    text = typeof b.text === 'string' ? b.text : '';
+    if (!text.trim()) return res.status(400).json({ error: 'متن خالی است.' });
+    plain = Buffer.from(text, 'utf8');
+    if (plain.length > MAX_TEXT) return res.status(413).json({ error: 'متن بیشتر از ۱ مگابایت است.' });
+  }
   let expiresAt = null;
   if (b.expiresAt != null) {
     expiresAt = Number(b.expiresAt);
     if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return res.status(400).json({ error: 'زمان انقضا نامعتبر است.' });
   }
   if (usedBytes() + plain.length + 28 > QUOTA) return res.status(413).json({ error: 'فضای کافی نیست.' });
-  const password = typeof b.password === 'string' ? b.password : '';
+  const password = !e2e && typeof b.password === 'string' ? b.password : '';
   const id = newId();
   const salt = crypto.randomBytes(16);
   const blob = sealText(plain, await textKey(password, salt), id);
   await fsp.writeFile(path.join(TEXTS, id + '.enc'), blob, { mode: 0o600 });
   const rec = {
     id, token: newLinkToken(), title: String(b.title || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80), salt: salt.toString('hex'),
-    size: blob.length, chars: [...text].length, createdAt: Date.now(), expiresAt,
-    protected: !!password, burn: !!b.burn, revoked: false, views: 0
+    size: blob.length, chars: e2e ? e2eChars : [...text].length, createdAt: Date.now(), expiresAt,
+    protected: e2e ? !!e2eSalt : !!password, burn: !!b.burn, revoked: false, views: 0
   };
+  if (e2e) Object.assign(rec, { e2e: true, e2eMeta: b.meta, e2eSalt, e2eVfy });
   db.texts[id] = rec;
   await save();
   res.json({ ok: true, id, link: '/t/' + rec.token });
@@ -564,7 +581,7 @@ app.get('/api/texts', auth, (req, res) => {
     .sort((a, b) => b.createdAt - a.createdAt)
     .map(t => ({
       id: t.id, title: t.title, chars: t.chars, size: t.size, createdAt: t.createdAt, expiresAt: t.expiresAt,
-      protected: t.protected, burn: t.burn, views: t.views, link: t.token && !t.revoked ? '/t/' + t.token : null
+      protected: t.protected, e2e: !!t.e2e, burn: t.burn, views: t.views, link: t.token && !t.revoked ? '/t/' + t.token : null
     }));
   res.json({ texts: list });
 });
@@ -607,6 +624,7 @@ body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px 16p
   font-family:var(--font);font-size:14px;line-height:1.8;-webkit-font-smoothing:antialiased}
 svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+[hidden]{display:none!important}
 .c.wide{max-width:680px}
 .c{width:100%;max-width:400px;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:28px;padding:32px 24px 28px;animation:rise .3s var(--ease-out)}
 .tile{display:grid;place-items:center;width:64px;height:64px;margin:0 auto 18px;border-radius:22px;background:var(--border);color:var(--muted-fg)}
@@ -668,7 +686,31 @@ function liveRecord(token) {
   if (isExpired(r)) { deleteRecord(r); return null; }
   return r;
 }
+// Landing page for end-to-end encrypted items. The server only renders opaque data attributes;
+// /viewer.js does all the cryptography in the visitor's browser (the key is in the #fragment).
+function e2eLanding(kind, rec, token) {
+  const isFile = kind === 'file';
+  const attrs = `data-kind="${kind}" data-token="${esc(token)}" data-meta="${esc(rec.e2eMeta || '')}" data-salt="${esc(rec.e2eSalt || '')}" `
+    + `data-vfy="${esc(rec.e2eVfy || '')}" data-size="${Number(rec.size) | 0}" data-burn="${rec.burn ? 1 : 0}"`;
+  const chips = `<span class="chip">${svg('lock')}رمزگذاری سرتاسری</span>`
+    + (isFile ? `<span class="chip" id="e2eSize">${svg('file')}${fmtSize(Math.max(0, rec.size - 24))}</span>` : '')
+    + (rec.expiresAt ? `<span class="chip">${svg('clock')}${esc(new Date(rec.expiresAt).toLocaleString('fa-IR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tehran' }))}</span>` : '')
+    + (rec.burn ? `<span class="chip">${svg('flame')}یک‌بار مصرف</span>` : '');
+  const title = isFile ? 'فایل رمزگذاری‌شده' : (rec.title || 'متن رمزگذاری‌شده');
+  const body = `<div class="tile g">${svg(isFile ? 'file' : 'text')}</div><h1 id="e2eTitle"><bdi>${esc(title)}</bdi></h1><div class="chips">${chips}</div>`
+    + (rec.burn ? '<p class="warn">این متن بعد از نمایش برای همیشه حذف می‌شود.</p>' : '')
+    + `<div id="e2e" ${attrs}>`
+    + (rec.e2eSalt ? '<input type="password" id="e2ePw" placeholder="رمز عبور" autocomplete="off" autofocus>' : '')
+    + '<div class="e" id="e2eErr" role="alert"></div>'
+    + `<button class="b" id="e2eGo" type="button">${svg(isFile ? 'down' : 'eye')}<span>${isFile ? 'دانلود و رمزگشایی' : 'نمایش متن'}</span></button>`
+    + (isFile ? '' : '<pre class="txt" id="e2eOut" dir="auto" hidden></pre><button class="b alt" id="e2eCopy" type="button" hidden>کپی متن</button>')
+    + '<noscript><p class="m">برای رمزگشایی، جاوااسکریپت باید فعال باشد.</p></noscript></div>'
+    + '<script src="/e2e.js"></script><script src="/viewer.js"></script>';
+  return page(title, body, 200, !isFile);
+}
+
 function landing(r, token, error) {
+  if (r.e2e) return e2eLanding('file', r, token);
   const chips = `<span class="chip">${svg('file')}${fmtSize(r.size)}</span>`
     + (r.expiresAt ? `<span class="chip">${svg('clock')}${esc(new Date(r.expiresAt).toLocaleString('fa-IR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tehran' }))}</span>` : '')
     + (r.pw ? `<span class="chip">${svg('lock')}رمزدار</span>` : '');
@@ -688,6 +730,7 @@ app.post('/d/:token', express.urlencoded({ extended: false, limit: '10kb' }), as
   const token = req.params.token;
   const r = liveRecord(token);
   if (!r) return send(res, notFound());
+  if (r.e2e) return res.redirect(303, `/d/${token}`);
   if (!r.pw) return res.redirect(303, `/d/${token}/file`);
   const key = 'dl:' + token + ':' + req.ip;
   if (limited(key)) return send(res, page('محدودیت', '<h1>تلاش‌های زیاد</h1><p class="m">چند دقیقه بعد دوباره امتحان کنید.</p>', 429));
@@ -752,7 +795,26 @@ function textView(t, text) {
 app.get('/t/:token', (req, res) => {
   res.set('Cache-Control', 'private, no-store');
   const t = liveText(req.params.token);
-  send(res, t ? textGate(t, req.params.token) : notFound());
+  send(res, !t ? notFound() : t.e2e ? e2eLanding('text', t, req.params.token) : textGate(t, req.params.token));
+});
+
+// E2E texts: the browser verifies the key/password locally first, then asks for the ciphertext.
+app.post('/t/:token/reveal', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'forbidden' });
+  const t = liveText(req.params.token);
+  if (!t || !t.e2e) return res.status(404).json({ error: 'not found' });
+  let payload;
+  try {
+    payload = openText(await fsp.readFile(path.join(TEXTS, t.id + '.enc')), await textKey('', Buffer.from(t.salt, 'hex')), t.id);
+  } catch { return res.status(404).json({ error: 'not found' }); }
+  if (t.burn) { // claim synchronously so two simultaneous requests cannot both read it
+    if (t.consumed) return res.status(404).json({ error: 'not found' });
+    t.consumed = true;
+  }
+  t.views++;
+  res.json({ payload: payload.toString('base64url') });
+  if (t.burn) await deleteText(t); else save();
 });
 
 app.post('/t/:token', express.urlencoded({ extended: false, limit: '10kb' }), async (req, res) => {
@@ -760,6 +822,7 @@ app.post('/t/:token', express.urlencoded({ extended: false, limit: '10kb' }), as
   const token = req.params.token;
   const t = liveText(token);
   if (!t) return send(res, notFound());
+  if (t.e2e) return res.redirect(303, `/t/${token}`);
   const key = 'tx:' + token + ':' + req.ip;
   if (limited(key)) return send(res, page('محدودیت', '<h1>تلاش‌های زیاد</h1><p class="m">چند دقیقه بعد دوباره امتحان کنید.</p>', 429));
   let plain;

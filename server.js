@@ -33,7 +33,7 @@ if (!process.env.SESSION_SECRET) {
 if (String(ADMIN_PASS).length < 8) console.warn('[warn] ADMIN_PASS is shorter than 8 characters. Use a stronger password.');
 const QUOTA = (parseFloat(process.env.QUOTA_GB) || 4.5) * 1024 ** 3;
 const MAX_BUNDLE = 200; // files allowed in one multi-file link
-const MAX_PENDING = 50; // unfinished uploads allowed at the same time
+const MAX_PENDING = 250; // unfinished uploads allowed at the same time (>= MAX_BUNDLE)
 const CHUNK = 5 * 1024 * 1024; // 5 MB per request: safe for proxy / timeout limits
 
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));

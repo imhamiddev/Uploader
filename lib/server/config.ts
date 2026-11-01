@@ -33,7 +33,10 @@ export function getConfig(): ServerConfig {
     throw new Error("ADMIN_USER and ADMIN_PASS environment variables are required.")
   }
 
-  const dataDir = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), "data"))
+  const dataDir = path.resolve(
+    /*turbopackIgnore: true*/ process.env.DATA_DIR ||
+      path.join(/*turbopackIgnore: true*/ process.cwd(), "data")
+  )
 
   cached = {
     adminUser,

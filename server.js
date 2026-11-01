@@ -513,6 +513,7 @@ body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px 16p
   font-family:var(--font);font-size:14px;line-height:1.8;-webkit-font-smoothing:antialiased}
 svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.c.wide{max-width:680px}
 .c{width:100%;max-width:400px;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:28px;padding:32px 24px 28px;animation:rise .3s var(--ease-out)}
 .tile{display:grid;place-items:center;width:64px;height:64px;margin:0 auto 18px;border-radius:22px;background:var(--border);color:var(--muted-fg)}
 .tile.g{background:var(--gradient-accent);color:#fff}
@@ -541,12 +542,15 @@ const ICONS = {
   down: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
   lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
-  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>'
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  text: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/>'
 };
 const svg = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
 const THEME_JS = `try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light')t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='light'}`;
-const page = (title, body, status = 200) => ({ status, html:
-  `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex"><title>${esc(title)}</title><link rel="preload" href="/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin><script>${THEME_JS}</script><style>${PAGE_CSS}</style></head><body><main class="c">${body}</main></body></html>` });
+const page = (title, body, status = 200, wide = false) => ({ status, html:
+  `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex"><title>${esc(title)}</title><link rel="preload" href="/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin><script>${THEME_JS}</script><style>${PAGE_CSS}</style></head><body><main class="c${wide ? ' wide' : ''}">${body}</main></body></html>` });
 const send = (res, p) => res.status(p.status).type('html').send(p.html);
 const notFound = () => page('یافت نشد', `<div class="tile">${svg('ban')}</div><h1>لینک معتبر نیست</h1><p class="m">این لینک باطل شده، منقضی شده یا وجود ندارد.</p>`, 404);
 const faNum = (n, d = 0) => Number(n).toLocaleString('fa-IR', { maximumFractionDigits: d });

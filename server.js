@@ -154,6 +154,11 @@ function addFail(k) {
 }
 
 async function unlinkQuiet(p) { try { await fsp.unlink(p); } catch { /* already gone */ } }
+async function deleteText(t) {
+  delete db.texts[t.id];
+  await unlinkQuiet(path.join(TEXTS, t.id + '.enc'));
+  await save();
+}
 async function deleteRecord(r) {
   if (r.file) await unlinkQuiet(path.join(FILES, r.file));
   delete db.files[r.id];
@@ -429,6 +434,66 @@ app.post('/api/files/:id/regenerate', auth, async (req, res) => {
 app.delete('/api/files/:id', auth, async (req, res) => {
   const r = db.files[req.params.id];
   if (r) await deleteRecord(r);
+  res.json({ ok: true });
+});
+
+// ---- texts (admin) -----------------------------------------------------------
+app.post('/api/texts', auth, express.json({ limit: '2mb' }), async (req, res) => {
+  const b = req.body || {};
+  const text = typeof b.text === 'string' ? b.text : '';
+  if (!text.trim()) return res.status(400).json({ error: 'متن خالی است.' });
+  const plain = Buffer.from(text, 'utf8');
+  if (plain.length > MAX_TEXT) return res.status(413).json({ error: 'متن بیشتر از ۱ مگابایت است.' });
+  let expiresAt = null;
+  if (b.expiresAt != null) {
+    expiresAt = Number(b.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return res.status(400).json({ error: 'زمان انقضا نامعتبر است.' });
+  }
+  if (usedBytes() + plain.length + 28 > QUOTA) return res.status(413).json({ error: 'فضای کافی نیست.' });
+  const password = typeof b.password === 'string' ? b.password : '';
+  const id = newId();
+  const salt = crypto.randomBytes(16);
+  const blob = sealText(plain, await textKey(password, salt), id);
+  await fsp.writeFile(path.join(TEXTS, id + '.enc'), blob, { mode: 0o600 });
+  const rec = {
+    id, token: newLinkToken(), title: cleanName(b.title, '').slice(0, 80), salt: salt.toString('hex'),
+    size: blob.length, chars: [...text].length, createdAt: Date.now(), expiresAt,
+    protected: !!password, burn: !!b.burn, revoked: false, views: 0
+  };
+  db.texts[id] = rec;
+  await save();
+  res.json({ ok: true, id, link: '/t/' + rec.token });
+});
+
+app.get('/api/texts', auth, (req, res) => {
+  const list = Object.values(db.texts)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(t => ({
+      id: t.id, title: t.title, chars: t.chars, size: t.size, createdAt: t.createdAt, expiresAt: t.expiresAt,
+      protected: t.protected, burn: t.burn, views: t.views, link: t.token && !t.revoked ? '/t/' + t.token : null
+    }));
+  res.json({ texts: list });
+});
+
+app.post('/api/texts/:id/revoke', auth, async (req, res) => {
+  const t = db.texts[req.params.id];
+  if (!t) return res.status(404).json({ error: 'متن پیدا نشد.' });
+  t.token = null; t.revoked = true;
+  await save();
+  res.json({ ok: true });
+});
+
+app.post('/api/texts/:id/regenerate', auth, async (req, res) => {
+  const t = db.texts[req.params.id];
+  if (!t) return res.status(404).json({ error: 'متن پیدا نشد.' });
+  t.token = newLinkToken(); t.revoked = false;
+  await save();
+  res.json({ ok: true, link: '/t/' + t.token });
+});
+
+app.delete('/api/texts/:id', auth, async (req, res) => {
+  const t = db.texts[req.params.id];
+  if (t) await deleteText(t);
   res.json({ ok: true });
 });
 

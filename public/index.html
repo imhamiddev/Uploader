@@ -724,6 +724,7 @@ async function refresh() {
   clearTimeout(timer);
   let d;
   try { d = await api('/api/files'); } catch { return; }
+  refreshTexts();
   const pct = d.quota ? Math.min(100, d.used / d.quota * 100) : 0;
   $('#meter').firstElementChild.style.width = pct + '%';
   $('#meter').classList.toggle('hi', pct > 90);
@@ -785,6 +786,85 @@ async function act(url, method, okMsg, confirm) {
   if (confirm && !(await ask(confirm.msg, confirm.ok, !!confirm.danger, confirm.title))) return;
   try { await api(url, { method }); toast(okMsg, 'ok'); } catch (e) { toast(e.message, 'err'); }
   refresh();
+}
+
+/* ---------- secure texts ---------- */
+const txBody = $('#txBody');
+txBody.addEventListener('input', () => { $('#txCount').textContent = txBody.value ? faNum([...txBody.value].length) + ' نویسه' : ''; });
+
+// strong random password (rejection sampling avoids modulo bias)
+$('#txGen').onclick = () => {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const lim = 256 - (256 % A.length);
+  let out = '';
+  while (out.length < 20) for (const b of crypto.getRandomValues(new Uint8Array(32))) { if (b < lim && out.length < 20) out += A[b % A.length]; }
+  $('#txPw').type = 'text';
+  $('#txPw').value = out;
+  toast('رمز تصادفی ساخته شد. آن را جایی نگه دارید.', 'ok');
+};
+
+$('#txSend').onclick = async () => {
+  const text = txBody.value;
+  if (!text.trim()) return toast('متن خالی است.', 'err');
+  const v = document.querySelector('input[name=txexp]:checked').value;
+  const pw = $('#txPw').value;
+  const btn = $('#txSend');
+  btn.disabled = true;
+  try {
+    const d = await api('/api/texts', { method: 'POST', json: {
+      text, title: $('#txTitle').value, password: pw, burn: $('#txBurn').checked,
+      expiresAt: v === '0' ? null : Date.now() + Number(v) * 1000
+    } });
+    const full = location.origin + d.link;
+    const cb = el('button', { class: 'btn sm', type: 'button' }, ic('copy'), el('span', {}, 'کپی'));
+    cb.onclick = async () => { if (await copy(full)) cb.replaceChildren(ic('check'), el('span', {}, 'کپی شد')); };
+    $('#txResult').replaceChildren(el('div', { class: 'q done' },
+      el('div', { class: 'q-top' }, el('span', { class: 'q-name' }, 'لینک امن ساخته شد'), el('span', { class: 'q-st ok' }, ic('check'))),
+      el('div', { class: 'link' },
+        el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک متن', onclick: e => e.target.select() }), cb),
+      el('div', { class: 'hint', style: 'margin-top:8px' }, pw ? 'رمز را از راهی جدا از لینک ارسال کنید.' : 'این متن رمز ندارد؛ هرکس لینک را داشته باشد می‌تواند آن را ببیند.')));
+    txBody.value = ''; $('#txTitle').value = ''; $('#txPw').value = ''; $('#txPw').type = 'password'; $('#txCount').textContent = '';
+    toast('متن رمزگذاری و ذخیره شد.', 'ok');
+    refreshTexts();
+  } catch (e) { toast(e.message, 'err'); }
+  btn.disabled = false;
+};
+
+async function refreshTexts() {
+  let d;
+  try { d = await api('/api/texts'); } catch { return; }
+  $('#txTotal').textContent = d.texts.length ? faNum(d.texts.length) + ' متن' : '';
+  const list = $('#tlist');
+  list.replaceChildren();
+  if (!d.texts.length) {
+    list.append(el('div', { class: 'empty' }, el('div', { class: 'tile' }, ic('text')), el('div', {}, el('b', {}, 'هنوز متنی ارسال نشده است.')), el('div', {}, 'متن‌های رمزگذاری‌شده همراه با لینک اشتراک در اینجا نمایش داده می‌شوند.')));
+    return;
+  }
+  d.texts.forEach((t, idx) => {
+    const full = t.link ? location.origin + t.link : '';
+    const cb = el('button', { class: 'btn sm', type: 'button' }, ic('copy'), el('span', {}, 'کپی'));
+    cb.onclick = async () => { if (await copy(full)) { cb.replaceChildren(ic('check'), el('span', {}, 'کپی شد')); setTimeout(() => cb.replaceChildren(ic('copy'), el('span', {}, 'کپی')), 1600); } };
+    list.append(el('article', { class: 'file', style: `animation-delay:${Math.min(idx, 8) * 30}ms` },
+      el('div', { class: 'file-top' },
+        el('div', { class: 'tile' }, ic('text')),
+        el('div', { class: 'file-main' },
+          el('div', { class: 'fn' }, el('bdi', {}, t.title || 'بدون عنوان')),
+          el('div', { class: 'meta' }, meta('text', faNum(t.chars) + ' نویسه'), meta('eye', faNum(t.views) + ' بازدید')))),
+      el('div', { class: 'meta', style: 'margin-top:8px' },
+        meta('cal', 'ساخت: ' + fmtDate(t.createdAt)),
+        meta('clock', t.expiresAt ? 'انقضا: ' + fmtDate(t.expiresAt) : 'بدون انقضا')),
+      el('div', { class: 'tags' },
+        el('span', { class: 'tag ok' }, ic('lock'), t.protected ? 'رمزدار' : 'رمزگذاری‌شده'),
+        t.burn && el('span', { class: 'tag warn' }, ic('flame'), 'یک‌بار مصرف'),
+        !t.link && el('span', { class: 'tag bad' }, ic('ban'), 'لینک باطل شده')),
+      t.link && el('div', { class: 'link' },
+        el('input', { class: 'input ltr', type: 'text', readonly: '', value: full, 'aria-label': 'لینک متن', onclick: e => e.target.select() }), cb),
+      el('div', { class: 'acts' },
+        t.link
+          ? el('button', { class: 'btn sm', type: 'button', onclick: () => act(`/api/texts/${t.id}/revoke`, 'POST', 'لینک باطل شد.', { msg: 'این لینک باطل شود؟ هرکس آن را دارد دیگر نمی‌تواند متن را ببیند.', ok: 'باطل کردن', title: 'باطل کردن لینک' }) }, ic('ban'), 'باطل کردن لینک')
+          : el('button', { class: 'btn sm', type: 'button', onclick: () => act(`/api/texts/${t.id}/regenerate`, 'POST', 'لینک جدید ساخته شد.') }, ic('refresh'), 'ساخت لینک جدید'),
+        el('button', { class: 'btn sm danger', type: 'button', onclick: () => act(`/api/texts/${t.id}`, 'DELETE', 'متن حذف شد.', { msg: 'متن برای همیشه حذف شود؟ این کار قابل بازگشت نیست.', ok: 'حذف', title: 'حذف متن', danger: true }) }, ic('trash'), 'حذف'))));
+  });
 }
 
 /* ---------- edit dialog ---------- */

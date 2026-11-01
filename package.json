@@ -5,7 +5,9 @@
   "main": "server.js",
   "private": true,
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js",
+    "test": "node test/smoke.js"
   },
   "engines": {
     "node": ">=18"
@@ -14,5 +16,6 @@
     "archiver": "^7.0.1",
     "archiver-zip-encrypted": "^2.0.0",
     "express": "^4.19.2"
-  }
+  },
+  "license": "UNLICENSED"
 }

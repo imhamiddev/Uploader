@@ -185,12 +185,15 @@ for (const f of fs.readdirSync(TMP)) {
 }
 // files on disk that no record points to (e.g. crash between unlink and db save) waste quota
 const known = new Set(Object.values(db.files).map(r => r.file).filter(Boolean));
+// only files older than an hour: a second app instance (or a record being written right now) must never lose data
+const OLD = Date.now() - 3600 * 1000;
+const isOld = p => { try { return fs.statSync(p).mtimeMs < OLD; } catch { return false; } };
 for (const f of fs.readdirSync(FILES)) {
-  if (!known.has(f)) unlinkQuiet(path.join(FILES, f));
+  if (!known.has(f) && isOld(path.join(FILES, f))) unlinkQuiet(path.join(FILES, f));
 }
 const knownTexts = new Set(Object.values(db.texts).map(t => t.id + '.enc'));
 for (const f of fs.readdirSync(TEXTS)) {
-  if (!knownTexts.has(f)) unlinkQuiet(path.join(TEXTS, f));
+  if (!knownTexts.has(f) && isOld(path.join(TEXTS, f))) unlinkQuiet(path.join(TEXTS, f));
 }
 save();
 

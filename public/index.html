@@ -612,7 +612,18 @@ async function api(url, { method = 'GET', json } = {}) {
 /* ---------- login ---------- */
 let timer = null;
 function showLogin() { clearTimeout(timer); $('#app').hidden = true; $('#login').hidden = false; $('#lp').value = ''; }
-function showApp() { $('#login').hidden = true; $('#app').hidden = false; refresh(); }
+function showApp() { $('#login').hidden = true; $('#app').hidden = false; refresh(); checkServer(); }
+// Node apps do not reload on file changes: warn when this page is newer than the running server
+async function checkServer() {
+  document.getElementById('verBanner')?.remove();
+  let d = {};
+  try { d = await api('/api/me'); } catch { return; }
+  const need = ['texts', 'bundle', 'e2e'];
+  if (Array.isArray(d.caps) && need.every(c => d.caps.includes(c))) return;
+  $('#app').prepend(el('div', { id: 'verBanner', role: 'alert', class: 'q fail', style: 'margin:12px 16px' },
+    el('b', {}, 'سرور نسخهٔ قدیمی را اجرا می‌کند. '),
+    'فایل‌ها به‌روز شده‌اند ولی برنامه ری‌استارت نشده است. در cPanel → Setup Node.js App روی «Run NPM Install» و سپس «Restart» بزنید (آپلود گروهی، E2E و متن تا آن موقع کار نمی‌کنند).'));
+}
 $('#lform').addEventListener('submit', async e => {
   e.preventDefault();
   $('#lerr').textContent = '';
@@ -705,16 +716,19 @@ function putChunk(url, blob, onProgress) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// prefixes an error with the step that failed, so the message says where it broke
+const stage = s => e => { e.message = `(${s}) ${e.message}`; throw e; };
+
 // uploads the bytes only (returns the upload id); cleans up after itself on failure
 async function sendChunks(file, onProgress) {
-  const { id, chunkSize } = await api('/api/upload/init', { method: 'POST', json: { name: file.name, size: file.size } });
+  const { id, chunkSize } = await api('/api/upload/init', { method: 'POST', json: { name: file.name, size: file.size } }).catch(stage('شروع آپلود'));
   try {
     let done = 0;
     for (let off = 0, i = 0; off < file.size; off += chunkSize, i++) {
       const blob = file.slice(off, Math.min(off + chunkSize, file.size));
       for (let attempt = 1; ; attempt++) {
         try { await putChunk(`/api/upload/${id}/${i}`, blob, l => onProgress((done + l) / file.size)); break; }
-        catch (e) { if (e.fatal || attempt >= 5) throw e; await sleep(1000 * attempt); }
+        catch (e) { if (e.fatal || attempt >= 5) throw stage(`ارسال تکهٔ ${i + 1}`)(e); await sleep(1000 * attempt); }
       }
       done += blob.size;
       onProgress(done / file.size);
@@ -731,7 +745,7 @@ async function uploadOne(file, opts, onProgress) {
   const id = await sendChunks(file, onProgress);
   try {
     await api(`/api/upload/${id}/finish`, { method: 'POST', json: { name: opts.name, rename: opts.rename, zip: opts.zip, zipPassword: opts.zipPassword, password: opts.password, expiresAt: opts.expiresAt } });
-  } catch (e) { dropUpload(id); throw e; }
+  } catch (e) { dropUpload(id); throw stage('نهایی‌سازی')(e); }
 }
 
 // several files -> one share link (the server packs them into one ZIP)
@@ -744,7 +758,8 @@ async function uploadBundle(files, opts, onProgress) {
       ids.push(await sendChunks(f, p => onProgress((doneBytes + p * f.size) / total)));
       doneBytes += f.size;
     }
-    await api('/api/bundle/finish', { method: 'POST', json: { ids, name: opts.name, rename: opts.rename, zipPassword: opts.zipPassword, password: opts.password, expiresAt: opts.expiresAt } });
+    await api('/api/bundle/finish', { method: 'POST', json: { ids, name: opts.name, rename: opts.rename, zipPassword: opts.zipPassword, password: opts.password, expiresAt: opts.expiresAt } })
+      .catch(e => { throw stage('ساخت لینک گروهی')(e); });
   } catch (e) { ids.forEach(dropUpload); throw e; }
 }
 

@@ -309,6 +309,12 @@ app.use((req, res, next) => {
 // API responses must never be cached by browsers or intermediaries.
 app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
+// log rejected upload requests (status >= 400) so problems are visible in stderr.log
+app.use(['/api/upload', '/api/bundle'], (req, res, next) => {
+  res.on('finish', () => { if (res.statusCode >= 400) console.warn(`[upload] ${req.method} ${req.originalUrl} -> ${res.statusCode}`); });
+  next();
+});
+
 const isAdmin = req => {
   const t = readToken(cookiesOf(req).sid);
   return !!(t && t.t === 'admin' && t.u === ADMIN_USER);
@@ -331,7 +337,10 @@ app.post('/api/login', express.json({ limit: '10kb' }), (req, res) => {
   res.json({ ok: true });
 });
 app.post('/api/logout', (req, res) => { res.clearCookie('sid', { path: '/' }); res.json({ ok: true }); });
-app.get('/api/me', auth, (req, res) => res.json({ ok: true }));
+// version + capabilities let the admin page detect a stale server (files updated but app not restarted)
+const PKG = require('./package.json');
+const CAPS = ['texts', 'bundle', 'e2e', 'qr'];
+app.get('/api/me', auth, (req, res) => res.json({ ok: true, version: PKG.version, caps: CAPS }));
 
 // ---- chunked upload ---------------------------------------------------------
 app.post('/api/upload/init', auth, express.json({ limit: '10kb' }), async (req, res) => {
